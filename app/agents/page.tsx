@@ -320,18 +320,18 @@ function LogViewer({ agent }: { agent: AgentInfo }) {
 
   useLayoutEffect(() => {
     if (!userScrolledRef.current) {
-      scrollToBottom()
+      const el = containerRef.current
+      if (el) {
+        el.scrollTo({ top: el.scrollHeight, behavior: 'instant' })
+        atBottomRef.current = true
+      }
     }
-  }, [lines, scrollToBottom])
+  }, [lines])
 
   // ── SSE stream ────────────────────────────────────────────────────────────
+  // State resets are handled by React unmount/remount via the key prop on LogViewer
 
   useEffect(() => {
-    setLines([])
-    setConnected(false)
-    setUserScrolled(false)
-    userScrolledRef.current = false
-
     const es = new EventSource(
       `/api/agents/${encodeURIComponent(agent.id)}/logs`,
     )

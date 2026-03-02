@@ -25,7 +25,7 @@ function IframeRenderer({ url }: { url: string }) {
   )
 }
 
-function MarkdownRenderer({ content }: { content: string }) {
+function MarkdownRenderer({ content: markdownContent }: { content: string }) {
   return (
     <div className="prose prose-invert prose-sm max-w-none px-4 py-4">
       <ReactMarkdown
@@ -79,7 +79,9 @@ function MarkdownRenderer({ content }: { content: string }) {
             </td>
           ),
         }}
-      />
+      >
+        {markdownContent}
+      </ReactMarkdown>
     </div>
   )
 }
