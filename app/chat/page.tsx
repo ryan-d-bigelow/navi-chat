@@ -12,11 +12,14 @@ import {
 } from '@/components/ui/sheet'
 import {
   loadConversations,
-  saveConversations,
+  loadMessages,
   createConversation,
   deleteConversation,
+  saveMessage,
+  updateConversationTitle,
 } from '@/lib/storage'
-import type { Conversation } from '@/lib/types'
+import type { Conversation, ChatMessage } from '@/lib/types'
+import type { SyncEvent } from '@/lib/sse'
 import { useChat } from '@ai-sdk/react'
 import type { UIMessage } from 'ai'
 import { Menu } from 'lucide-react'
@@ -29,7 +32,7 @@ function getTextContent(message: UIMessage): string {
     .join('')
 }
 
-function toUIMessages(messages: Conversation['messages']): UIMessage[] {
+function toUIMessages(messages: ChatMessage[]): UIMessage[] {
   return messages.map((m) => ({
     id: m.id,
     role: m.role,
@@ -43,9 +46,93 @@ export default function ChatPage() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [input, setInput] = useState('')
   const scrollRef = useRef<HTMLDivElement>(null)
+  const activeIdRef = useRef<string | null>(null)
 
+  // Keep ref in sync for use in callbacks
   useEffect(() => {
-    setConversations(loadConversations())
+    activeIdRef.current = activeId
+  }, [activeId])
+
+  // Load conversations from API on mount
+  useEffect(() => {
+    loadConversations().then(setConversations)
+  }, [])
+
+  // SSE subscription
+  useEffect(() => {
+    const es = new EventSource('/api/sync')
+
+    es.onmessage = (event) => {
+      try {
+        const syncEvent: SyncEvent = JSON.parse(event.data)
+
+        switch (syncEvent.type) {
+          case 'conversation_created': {
+            const payload = syncEvent.payload as {
+              id: string
+              title: string
+              created_at: number
+              updated_at: number
+            }
+            setConversations((prev) => {
+              if (prev.some((c) => c.id === payload.id)) return prev
+              return [
+                {
+                  id: payload.id,
+                  title: payload.title,
+                  messages: [],
+                  createdAt: payload.created_at,
+                  updatedAt: payload.updated_at,
+                },
+                ...prev,
+              ]
+            })
+            break
+          }
+          case 'conversation_deleted': {
+            const payload = syncEvent.payload as { id: string }
+            setConversations((prev) => prev.filter((c) => c.id !== payload.id))
+            break
+          }
+          case 'conversation_updated': {
+            const payload = syncEvent.payload as { id: string; title: string }
+            setConversations((prev) =>
+              prev.map((c) =>
+                c.id === payload.id ? { ...c, title: payload.title } : c
+              )
+            )
+            break
+          }
+          case 'message_appended': {
+            const payload = syncEvent.payload as {
+              conversation_id: string
+              message: {
+                id: string
+                role: 'user' | 'assistant' | 'system'
+                content: string
+                timestamp: number
+              }
+            }
+            setConversations((prev) =>
+              prev.map((c) => {
+                if (c.id !== payload.conversation_id) return c
+                if (c.messages.some((m) => m.id === payload.message.id)) return c
+                return {
+                  ...c,
+                  messages: [...c.messages, payload.message],
+                  updatedAt: payload.message.timestamp,
+                }
+              })
+            )
+            break
+          }
+        }
+      } catch {
+        // ignore parse errors
+      }
+    }
+
+    return () => es.close()
   }, [])
 
   const activeConversation = conversations.find((c) => c.id === activeId)
@@ -57,28 +144,32 @@ export default function ChatPage() {
     },
     onFinish: ({ message }) => {
       const content = getTextContent(message)
+      const currentActiveId = activeIdRef.current
+      if (!currentActiveId) return
+
+      const msg: ChatMessage = {
+        id: message.id,
+        role: message.role as 'user' | 'assistant',
+        content,
+        timestamp: Date.now(),
+      }
+
+      // Check if already saved (from SSE)
       setConversations((prev) => {
-        const updated = prev.map((c) => {
-          if (c.id !== activeId) return c
-          const exists = c.messages.some((m) => m.id === message.id)
-          if (exists) return c
+        const conv = prev.find((c) => c.id === currentActiveId)
+        if (conv?.messages.some((m) => m.id === message.id)) return prev
+        return prev.map((c) => {
+          if (c.id !== currentActiveId) return c
           return {
             ...c,
-            messages: [
-              ...c.messages,
-              {
-                id: message.id,
-                role: message.role as 'user' | 'assistant',
-                content,
-                timestamp: Date.now(),
-              },
-            ],
-            updatedAt: Date.now(),
+            messages: [...c.messages, msg],
+            updatedAt: msg.timestamp,
           }
         })
-        saveConversations(updated)
-        return updated
       })
+
+      // Persist to API (fire-and-forget)
+      saveMessage(currentActiveId, msg)
     },
   })
 
@@ -91,37 +182,39 @@ export default function ChatPage() {
   }, [messages])
 
   const handleNewChat = useCallback(() => {
-    const conv = createConversation('New Chat')
-    setConversations((prev) => {
-      const updated = [conv, ...prev]
-      saveConversations(updated)
-      return updated
+    const id = crypto.randomUUID()
+    createConversation(id, 'New Chat').then((conv) => {
+      setConversations((prev) => {
+        if (prev.some((c) => c.id === conv.id)) return prev
+        return [conv, ...prev]
+      })
+      setActiveId(conv.id)
+      setMessages([])
+      setInput('')
+      setSidebarOpen(false)
     })
-    setActiveId(conv.id)
-    setMessages([])
-    setInput('')
-    setSidebarOpen(false)
   }, [setMessages])
 
   const handleSelectConversation = useCallback(
     (id: string) => {
       setActiveId(id)
-      const conv = conversations.find((c) => c.id === id)
-      if (conv) {
-        setMessages(toUIMessages(conv.messages))
-      }
       setInput('')
       setSidebarOpen(false)
+      // Load messages from API
+      loadMessages(id).then((msgs) => {
+        setConversations((prev) =>
+          prev.map((c) => (c.id === id ? { ...c, messages: msgs } : c))
+        )
+        setMessages(toUIMessages(msgs))
+      })
     },
-    [conversations, setMessages]
+    [setMessages]
   )
 
   const handleDeleteConversation = useCallback(
     (id: string) => {
-      setConversations((prev) => {
-        const updated = deleteConversation(prev, id)
-        return updated
-      })
+      deleteConversation(id)
+      setConversations((prev) => prev.filter((c) => c.id !== id))
       if (activeId === id) {
         setActiveId(null)
         setMessages([])
@@ -136,53 +229,57 @@ export default function ChatPage() {
 
     let currentActiveId = activeId
 
+    const userMsg: ChatMessage = {
+      id: crypto.randomUUID(),
+      role: 'user',
+      content: text,
+      timestamp: Date.now(),
+    }
+
     if (!currentActiveId) {
+      // Create new conversation with first message
       const title = text.slice(0, 30) + (text.length > 30 ? '...' : '')
-      const conv = createConversation(title)
-      conv.messages.push({
-        id: crypto.randomUUID(),
-        role: 'user',
-        content: text,
-        timestamp: Date.now(),
+      const id = crypto.randomUUID()
+      currentActiveId = id
+
+      createConversation(id, title).then((conv) => {
+        setConversations((prev) => {
+          if (prev.some((c) => c.id === conv.id)) return prev
+          return [{ ...conv, messages: [userMsg] }, ...prev]
+        })
+        saveMessage(id, userMsg)
       })
-      currentActiveId = conv.id
-      setConversations((prev) => {
-        const updated = [conv, ...prev]
-        saveConversations(updated)
-        return updated
-      })
-      setActiveId(conv.id)
+      setActiveId(id)
     } else {
-      setConversations((prev) => {
-        const updated = prev.map((c) => {
+      // Auto-title if first message
+      const conv = conversations.find((c) => c.id === currentActiveId)
+      if (conv && conv.messages.length === 0) {
+        const title = text.slice(0, 30) + (text.length > 30 ? '...' : '')
+        updateConversationTitle(currentActiveId, title)
+        setConversations((prev) =>
+          prev.map((c) =>
+            c.id === currentActiveId ? { ...c, title } : c
+          )
+        )
+      }
+
+      setConversations((prev) =>
+        prev.map((c) => {
           if (c.id !== currentActiveId) return c
-          const title =
-            c.messages.length === 0
-              ? text.slice(0, 30) + (text.length > 30 ? '...' : '')
-              : c.title
           return {
             ...c,
-            title,
-            messages: [
-              ...c.messages,
-              {
-                id: crypto.randomUUID(),
-                role: 'user' as const,
-                content: text,
-                timestamp: Date.now(),
-              },
-            ],
-            updatedAt: Date.now(),
+            messages: [...c.messages, userMsg],
+            updatedAt: userMsg.timestamp,
           }
         })
-        saveConversations(updated)
-        return updated
-      })
+      )
+
+      saveMessage(currentActiveId, userMsg)
     }
 
     setInput('')
     sendMessage({ text })
-  }, [activeId, input, sendMessage])
+  }, [activeId, input, sendMessage, conversations])
 
   return (
     <div className="flex h-dvh bg-zinc-900">

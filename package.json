@@ -12,8 +12,10 @@
   "dependencies": {
     "@ai-sdk/openai": "^3.0.38",
     "@ai-sdk/react": "^3.0.108",
+    "@types/better-sqlite3": "^7.6.13",
     "@types/react-syntax-highlighter": "^15.5.13",
     "ai": "^6.0.106",
+    "better-sqlite3": "^12.6.2",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "lucide-react": "^0.576.0",
@@ -45,6 +47,7 @@
     "unrs-resolver"
   ],
   "trustedDependencies": [
+    "better-sqlite3",
     "sharp",
     "unrs-resolver"
   ]
