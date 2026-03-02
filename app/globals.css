@@ -124,3 +124,18 @@
     @apply bg-background text-foreground;
   }
 }
+
+@keyframes ticker-scroll {
+  0%      { transform: translateX(0); }
+  8%      { transform: translateX(0); }
+  70%     { transform: translateX(var(--ticker-offset)); }
+  84%     { transform: translateX(var(--ticker-offset)); }
+  84.01%  { transform: translateX(0); }
+  100%    { transform: translateX(0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ticker-text {
+    animation: none !important;
+  }
+}
