@@ -1,20 +1,100 @@
 'use client'
 
 import { SidebarNav } from '@/components/chat/sidebar'
-import { Badge } from '@/components/ui/badge'
-import { ScrollArea } from '@/components/ui/scroll-area'
 import { Separator } from '@/components/ui/separator'
-import type { AgentInfo } from '@/lib/agents'
-import { RefreshCw, Terminal } from 'lucide-react'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import type { AgentInfo, AgentType } from '@/lib/agents'
+import {
+  Bot,
+  ChevronDown,
+  Clock,
+  Cpu,
+  Globe,
+  Home,
+  RefreshCw,
+  Search,
+  Terminal,
+  Timer,
+  Wifi,
+  WifiOff,
+  Zap,
+} from 'lucide-react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 
-const POLL_INTERVAL = 10_000
+// ─── Constants ────────────────────────────────────────────────────────────────
 
-interface LogLine {
-  type: 'log' | 'thinking' | 'error'
-  content: string
-  timestamp: number
+const POLL_INTERVAL = 8_000
+const MAX_LOG_LINES = 5_000
+const BOTTOM_THRESHOLD_PX = 64
+
+// ─── Agent type metadata ──────────────────────────────────────────────────────
+
+const TYPE_META: Record<
+  AgentType,
+  { label: string; icon: React.ReactNode; color: string; dot: string }
+> = {
+  coder: {
+    label: 'Coding Agent',
+    icon: <Terminal className="h-3 w-3" />,
+    color: 'text-sky-400 bg-sky-500/10 border-sky-500/20',
+    dot: 'bg-sky-400',
+  },
+  researcher: {
+    label: 'Researcher',
+    icon: <Search className="h-3 w-3" />,
+    color: 'text-violet-400 bg-violet-500/10 border-violet-500/20',
+    dot: 'bg-violet-400',
+  },
+  home: {
+    label: 'Home',
+    icon: <Home className="h-3 w-3" />,
+    color: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20',
+    dot: 'bg-emerald-400',
+  },
+  wevo: {
+    label: 'Wevo',
+    icon: <Zap className="h-3 w-3" />,
+    color: 'text-orange-400 bg-orange-500/10 border-orange-500/20',
+    dot: 'bg-orange-400',
+  },
+  browser: {
+    label: 'Scout',
+    icon: <Globe className="h-3 w-3" />,
+    color: 'text-cyan-400 bg-cyan-500/10 border-cyan-500/20',
+    dot: 'bg-cyan-400',
+  },
+  cron: {
+    label: 'Cron Job',
+    icon: <Timer className="h-3 w-3" />,
+    color: 'text-amber-400 bg-amber-500/10 border-amber-500/20',
+    dot: 'bg-amber-400',
+  },
+  navi: {
+    label: 'Navi',
+    icon: <Bot className="h-3 w-3" />,
+    color: 'text-teal-400 bg-teal-500/10 border-teal-500/20',
+    dot: 'bg-teal-400',
+  },
+  slack: {
+    label: 'Slack',
+    icon: <Cpu className="h-3 w-3" />,
+    color: 'text-rose-400 bg-rose-500/10 border-rose-500/20',
+    dot: 'bg-rose-400',
+  },
+  webchat: {
+    label: 'Web Chat',
+    icon: <Bot className="h-3 w-3" />,
+    color: 'text-indigo-400 bg-indigo-500/10 border-indigo-500/20',
+    dot: 'bg-indigo-400',
+  },
+  process: {
+    label: 'Process',
+    icon: <Cpu className="h-3 w-3" />,
+    color: 'text-zinc-400 bg-zinc-500/10 border-zinc-500/20',
+    dot: 'bg-zinc-400',
+  },
 }
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function timeElapsed(startedAt: number): string {
   const ms = Date.now() - startedAt
@@ -26,20 +106,51 @@ function timeElapsed(startedAt: number): string {
   return `${hours}h ${minutes % 60}m`
 }
 
-function StatusBadge({ status }: { status: AgentInfo['status'] }) {
-  const config = {
-    running: 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30',
-    idle: 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30',
-    done: 'bg-zinc-500/20 text-zinc-400 border-zinc-500/30',
-  } as const
+function getOriginLabel(agent: AgentInfo): string | null {
+  if (agent.source === 'process') return 'Local Process'
+  if (!agent.sessionKey) return null
+  const parts = agent.sessionKey.split(':')
+  if (parts[2] === 'cron') return 'Cron Job'
+  if (parts[2] === 'slack') return 'Slack'
+  if (parts[2] === 'openai') return 'Web Chat'
+  if (parts[3] === 'thread') return 'Slack Thread'
+  return agent.sessionKey
+}
 
+// ─── Types ────────────────────────────────────────────────────────────────────
+
+interface LogLine {
+  type: 'log' | 'thinking' | 'error' | 'tool' | 'system'
+  content: string
+  timestamp: number
+}
+
+// ─── Sub-components ───────────────────────────────────────────────────────────
+
+function StatusDot({ status }: { status: AgentInfo['status'] }) {
+  if (status === 'running') {
+    return (
+      <span className="relative flex h-2 w-2 shrink-0">
+        <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
+        <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-400" />
+      </span>
+    )
+  }
+  if (status === 'idle') {
+    return <span className="h-2 w-2 shrink-0 rounded-full bg-yellow-400/80" />
+  }
+  return <span className="h-2 w-2 shrink-0 rounded-full bg-zinc-600" />
+}
+
+function TypeBadge({ agentType }: { agentType: AgentType }) {
+  const meta = TYPE_META[agentType]
   return (
-    <Badge
-      variant="outline"
-      className={`text-[10px] px-1.5 py-0 ${config[status]}`}
+    <span
+      className={`inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[10px] font-medium ${meta.color}`}
     >
-      {status}
-    </Badge>
+      {meta.icon}
+      {meta.label}
+    </span>
   )
 }
 
@@ -47,50 +158,191 @@ function AgentCard({
   agent,
   isSelected,
   onSelect,
+  now,
 }: {
   agent: AgentInfo
   isSelected: boolean
   onSelect: () => void
+  now: number
 }) {
+  const meta = TYPE_META[agent.agentType]
+  const origin = getOriginLabel(agent)
+
   return (
     <button
       onClick={onSelect}
-      className={`w-full rounded-lg px-3 py-2.5 text-left transition-colors ${
+      className={`group w-full rounded-lg border p-3 text-left transition-all ${
         isSelected
-          ? 'bg-zinc-800 text-zinc-100'
-          : 'text-zinc-300 hover:bg-zinc-800/50 hover:text-zinc-200'
+          ? 'border-zinc-700 bg-zinc-800 shadow-sm'
+          : 'border-transparent hover:border-zinc-800 hover:bg-zinc-800/40'
       }`}
     >
+      {/* Row 1: status + name + badge */}
       <div className="flex items-center gap-2">
-        <Terminal className="h-3.5 w-3.5 shrink-0 text-zinc-500" />
-        <span className="truncate text-sm font-medium">{agent.name}</span>
-        <StatusBadge status={agent.status} />
+        <StatusDot status={agent.status} />
+        <span className="flex-1 truncate text-sm font-medium text-zinc-200">
+          {agent.name}
+        </span>
+        <TypeBadge agentType={agent.agentType} />
       </div>
-      <p className="mt-1 truncate text-xs text-zinc-500">{agent.task}</p>
-      <div className="mt-1 flex items-center gap-2 text-[10px] text-zinc-600">
-        {agent.model && <span>{agent.model}</span>}
-        <span>{timeElapsed(agent.startedAt)}</span>
-        {agent.pid > 0 && <span>PID {agent.pid}</span>}
+
+      {/* Row 2: task */}
+      <p
+        className="mt-1.5 line-clamp-1 text-xs leading-relaxed text-zinc-500"
+        title={agent.task}
+      >
+        {agent.task}
+      </p>
+
+      {/* Row 3: meta */}
+      <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-[10px] text-zinc-600">
+        {agent.source === 'process' && agent.pid > 0 && (
+          <span className="flex items-center gap-0.5">
+            <Cpu className="h-2.5 w-2.5" />
+            PID {agent.pid}
+          </span>
+        )}
+        {agent.model && (
+          <span className="truncate max-w-[100px]">{agent.model.split('/').pop()}</span>
+        )}
+        {origin && (
+          <span className="truncate max-w-[80px]">{origin}</span>
+        )}
+        <span className="flex items-center gap-0.5 ml-auto">
+          <Clock className="h-2.5 w-2.5" />
+          {timeElapsed(agent.startedAt)}
+        </span>
       </div>
     </button>
   )
 }
 
-function LogViewer({ agentId }: { agentId: string }) {
+// ─── Log Viewer ───────────────────────────────────────────────────────────────
+
+function LogEntry({ line }: { line: LogLine }) {
+  const ts = new Date(line.timestamp).toLocaleTimeString('en-US', {
+    hour12: false,
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+  })
+
+  const tsEl = (
+    <span className="mr-2 shrink-0 select-none text-zinc-700">{ts}</span>
+  )
+
+  if (line.type === 'thinking') {
+    return (
+      <div className="flex text-purple-400/90">
+        {tsEl}
+        <span className="mr-1.5 select-none">🧠</span>
+        <span>{line.content}</span>
+      </div>
+    )
+  }
+  if (line.type === 'error') {
+    return (
+      <div className="flex text-red-400">
+        {tsEl}
+        <span className="mr-1.5 select-none text-red-600">✗</span>
+        <span>{line.content}</span>
+      </div>
+    )
+  }
+  if (line.type === 'tool') {
+    return (
+      <div className="flex text-amber-400/80">
+        {tsEl}
+        <span className="mr-1.5 select-none">⚙</span>
+        <span>{line.content}</span>
+      </div>
+    )
+  }
+  if (line.type === 'system') {
+    return (
+      <div className="flex text-zinc-600 italic">
+        {tsEl}
+        <span>{line.content}</span>
+      </div>
+    )
+  }
+  return (
+    <div className="flex text-zinc-400">
+      {tsEl}
+      <span>{line.content}</span>
+    </div>
+  )
+}
+
+function LogViewer({ agent }: { agent: AgentInfo }) {
   const [lines, setLines] = useState<LogLine[]>([])
-  const [paused, setPaused] = useState(false)
+  const [connected, setConnected] = useState(false)
+  const [userScrolled, setUserScrolled] = useState(false)
+
   const containerRef = useRef<HTMLDivElement>(null)
+  const userScrolledRef = useRef(false) // avoid stale closure in scroll handler
+  const atBottomRef = useRef(true)
+
+  // ── Helpers ──────────────────────────────────────────────────────────────
+
+  const isNearBottom = useCallback(() => {
+    const el = containerRef.current
+    if (!el) return true
+    return el.scrollHeight - el.scrollTop - el.clientHeight < BOTTOM_THRESHOLD_PX
+  }, [])
+
+  const scrollToBottom = useCallback((smooth = false) => {
+    const el = containerRef.current
+    if (!el) return
+    el.scrollTo({ top: el.scrollHeight, behavior: smooth ? 'smooth' : 'instant' })
+    userScrolledRef.current = false
+    setUserScrolled(false)
+    atBottomRef.current = true
+  }, [])
+
+  // ── Scroll detection ──────────────────────────────────────────────────────
+
+  const handleScroll = useCallback(() => {
+    const near = isNearBottom()
+    atBottomRef.current = near
+    if (!near) {
+      userScrolledRef.current = true
+      setUserScrolled(true)
+    } else {
+      userScrolledRef.current = false
+      setUserScrolled(false)
+    }
+  }, [isNearBottom])
+
+  // ── Auto-scroll on new lines ──────────────────────────────────────────────
+  // useLayoutEffect so scroll happens before browser paints (no flicker)
+
+  useLayoutEffect(() => {
+    if (!userScrolledRef.current) {
+      scrollToBottom()
+    }
+  }, [lines, scrollToBottom])
+
+  // ── SSE stream ────────────────────────────────────────────────────────────
 
   useEffect(() => {
-    const es = new EventSource(`/api/agents/${encodeURIComponent(agentId)}/logs`)
+    setLines([])
+    setConnected(false)
+    setUserScrolled(false)
+    userScrolledRef.current = false
+
+    const es = new EventSource(
+      `/api/agents/${encodeURIComponent(agent.id)}/logs`,
+    )
+
+    es.onopen = () => setConnected(true)
 
     es.onmessage = (event) => {
       try {
         const line: LogLine = JSON.parse(event.data)
         setLines((prev) => {
           const next = [...prev, line]
-          // Keep last 2000 lines max
-          return next.length > 2000 ? next.slice(-2000) : next
+          return next.length > MAX_LOG_LINES ? next.slice(-MAX_LOG_LINES) : next
         })
       } catch {
         // ignore parse errors
@@ -98,69 +350,217 @@ function LogViewer({ agentId }: { agentId: string }) {
     }
 
     es.onerror = () => {
-      // EventSource will auto-reconnect
+      setConnected(false)
     }
 
     return () => {
       es.close()
     }
-  }, [agentId])
-
-  useEffect(() => {
-    if (!paused && containerRef.current) {
-      containerRef.current.scrollTop = containerRef.current.scrollHeight
-    }
-  }, [lines, paused])
+  }, [agent.id])
 
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
-      <div className="flex items-center justify-between border-b border-zinc-800 px-4 py-2">
-        <span className="text-xs font-medium text-zinc-400">Live Logs</span>
-        <button
-          onClick={() => setPaused((v) => !v)}
-          className={`rounded px-2 py-1 text-[10px] font-medium transition-colors ${
-            paused
-              ? 'bg-yellow-500/20 text-yellow-400'
-              : 'text-zinc-500 hover:bg-zinc-800 hover:text-zinc-400'
-          }`}
-        >
-          {paused ? 'Paused' : 'Pause scroll'}
-        </button>
-      </div>
-      <div
-        ref={containerRef}
-        className="flex-1 overflow-y-auto bg-zinc-950 p-4 font-mono text-xs leading-5"
-      >
-        {lines.length === 0 && (
-          <p className="text-zinc-600">Waiting for log output...</p>
+      {/* Log toolbar */}
+      <div className="flex shrink-0 items-center gap-3 border-b border-zinc-800/80 bg-zinc-950/50 px-4 py-2">
+        {/* Connection status */}
+        <span className="flex items-center gap-1.5 text-[10px]">
+          {connected ? (
+            <>
+              <Wifi className="h-3 w-3 text-emerald-500" />
+              <span className="text-emerald-500">Live</span>
+            </>
+          ) : (
+            <>
+              <WifiOff className="h-3 w-3 text-zinc-600" />
+              <span className="text-zinc-600">Connecting…</span>
+            </>
+          )}
+        </span>
+
+        <span className="text-[10px] text-zinc-600">{lines.length} lines</span>
+
+        <div className="flex-1" />
+
+        {userScrolled && (
+          <button
+            onClick={() => scrollToBottom(true)}
+            className="flex items-center gap-1 rounded border border-zinc-700 bg-zinc-800 px-2 py-1 text-[10px] font-medium text-zinc-300 transition-colors hover:bg-zinc-700"
+          >
+            <ChevronDown className="h-3 w-3" />
+            Scroll to bottom
+          </button>
         )}
-        {lines.map((line, i) => (
-          <LogEntry key={i} line={line} />
+
+        {!userScrolled && (
+          <span className="flex items-center gap-1 text-[10px] text-zinc-600">
+            <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
+            Following
+          </span>
+        )}
+      </div>
+
+      {/* Log area — relative/absolute pattern for proper flex overflow */}
+      <div className="relative min-h-0 flex-1">
+        <div
+          ref={containerRef}
+          onScroll={handleScroll}
+          className="absolute inset-0 overflow-y-auto bg-zinc-950 p-4 font-mono text-xs leading-[1.6]"
+          style={{ overflowAnchor: 'none' }}
+        >
+          {lines.length === 0 && (
+            <div className="flex h-full items-center justify-center">
+              <p className="text-zinc-700">Waiting for output…</p>
+            </div>
+          )}
+          {lines.map((line, i) => (
+            <LogEntry key={i} line={line} />
+          ))}
+          <div style={{ height: 0 }} />
+        </div>
+
+        {userScrolled && (
+          <button
+            onClick={() => scrollToBottom(true)}
+            className="absolute bottom-4 left-1/2 z-10 flex -translate-x-1/2 items-center gap-1.5 rounded-full border border-zinc-700 bg-zinc-800/90 px-3 py-1.5 text-xs font-medium text-zinc-300 shadow-lg backdrop-blur-sm transition-colors hover:bg-zinc-700"
+          >
+            <ChevronDown className="h-3.5 w-3.5" />
+            Jump to bottom
+          </button>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ─── Agent detail header ──────────────────────────────────────────────────────
+
+function AgentDetailHeader({ agent }: { agent: AgentInfo }) {
+  const meta = TYPE_META[agent.agentType]
+  const [elapsed, setElapsed] = useState(() => timeElapsed(agent.startedAt))
+
+  useEffect(() => {
+    if (agent.status === 'done') return
+    const id = setInterval(() => setElapsed(timeElapsed(agent.startedAt)), 1000)
+    return () => clearInterval(id)
+  }, [agent.startedAt, agent.status])
+
+  return (
+    <header className="shrink-0 border-b border-zinc-800 bg-zinc-950/60 px-5 py-3">
+      <div className="flex items-start gap-3">
+        <div
+          className={`mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border ${meta.color}`}
+        >
+          {meta.icon}
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2">
+            <h1 className="text-sm font-semibold text-zinc-100">{agent.name}</h1>
+            <StatusDot status={agent.status} />
+            <span
+              className={`text-xs ${
+                agent.status === 'running'
+                  ? 'text-emerald-400'
+                  : agent.status === 'idle'
+                    ? 'text-yellow-400'
+                    : 'text-zinc-500'
+              }`}
+            >
+              {agent.status}
+            </span>
+          </div>
+          <p className="mt-0.5 truncate text-xs text-zinc-500" title={agent.task}>
+            {agent.task}
+          </p>
+        </div>
+        <div className="shrink-0 text-right">
+          <div className="flex items-center gap-1 text-xs text-zinc-500">
+            <Clock className="h-3 w-3" />
+            {elapsed}
+          </div>
+          {agent.pid > 0 && (
+            <div className="mt-0.5 text-[10px] text-zinc-700">PID {agent.pid}</div>
+          )}
+          {agent.sessionKey && (
+            <div
+              className="mt-0.5 truncate max-w-[160px] text-[10px] text-zinc-700"
+              title={agent.sessionKey}
+            >
+              {agent.sessionKey}
+            </div>
+          )}
+        </div>
+      </div>
+    </header>
+  )
+}
+
+// ─── Empty state ──────────────────────────────────────────────────────────────
+
+function EmptyState({ hasAgents }: { hasAgents: boolean }) {
+  return (
+    <div className="flex flex-1 flex-col items-center justify-center gap-3 text-center">
+      <div className="flex h-16 w-16 items-center justify-center rounded-2xl border border-zinc-800 bg-zinc-900">
+        <Terminal className="h-8 w-8 text-zinc-700" />
+      </div>
+      <div>
+        <p className="text-sm font-medium text-zinc-400">
+          {hasAgents ? 'Select an agent to view its logs' : 'No active agents'}
+        </p>
+        <p className="mt-1 text-xs text-zinc-600">
+          {hasAgents
+            ? 'Click an agent on the left to tail its output'
+            : 'Agents will appear here when active'}
+        </p>
+      </div>
+    </div>
+  )
+}
+
+// ─── Sidebar section ──────────────────────────────────────────────────────────
+
+function AgentGroup({
+  label,
+  agents,
+  selectedId,
+  onSelect,
+  now,
+}: {
+  label: string
+  agents: AgentInfo[]
+  selectedId: string | null
+  onSelect: (id: string) => void
+  now: number
+}) {
+  if (agents.length === 0) return null
+  return (
+    <div className="mb-2">
+      <p className="mb-1 px-2 text-[10px] font-semibold uppercase tracking-widest text-zinc-600">
+        {label}
+      </p>
+      <div className="flex flex-col gap-0.5">
+        {agents.map((agent) => (
+          <AgentCard
+            key={agent.id}
+            agent={agent}
+            isSelected={agent.id === selectedId}
+            onSelect={() => onSelect(agent.id)}
+            now={now}
+          />
         ))}
       </div>
     </div>
   )
 }
 
-function LogEntry({ line }: { line: LogLine }) {
-  if (line.type === 'thinking') {
-    return (
-      <div className="text-purple-400">
-        <span className="mr-1">{'\u{1F9E0}'}</span>
-        {line.content}
-      </div>
-    )
-  }
-  if (line.type === 'error') {
-    return <div className="text-red-400">{line.content}</div>
-  }
-  return <div className="text-zinc-400">{line.content}</div>
-}
+// ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function AgentsPage() {
   const [agents, setAgents] = useState<AgentInfo[]>([])
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
+  const [now, setNow] = useState(Date.now())
+
+  // ── Fetch agents ────────────────────────────────────────────────────────
 
   const fetchAgents = useCallback(async () => {
     try {
@@ -168,9 +568,14 @@ export default function AgentsPage() {
       if (res.ok) {
         const data: AgentInfo[] = await res.json()
         setAgents(data)
+        // Auto-select first agent if none selected
+        setSelectedId((prev) => {
+          if (prev) return prev
+          return data[0]?.id ?? null
+        })
       }
     } catch {
-      // ignore fetch errors
+      // ignore
     } finally {
       setLoading(false)
     }
@@ -178,79 +583,98 @@ export default function AgentsPage() {
 
   useEffect(() => {
     fetchAgents()
-    const interval = setInterval(fetchAgents, POLL_INTERVAL)
-    return () => clearInterval(interval)
+    const poll = setInterval(fetchAgents, POLL_INTERVAL)
+    return () => clearInterval(poll)
   }, [fetchAgents])
+
+  // ── Tick for elapsed timers ─────────────────────────────────────────────
+
+  useEffect(() => {
+    const tick = setInterval(() => setNow(Date.now()), 5_000)
+    return () => clearInterval(tick)
+  }, [])
+
+  // ── Group agents by status ──────────────────────────────────────────────
+
+  const running = agents.filter((a) => a.status === 'running')
+  const idle = agents.filter((a) => a.status === 'idle')
+  const done = agents.filter((a) => a.status === 'done')
 
   const selectedAgent = agents.find((a) => a.id === selectedId)
 
   return (
-    <div className="flex h-dvh bg-zinc-900">
-      {/* Left panel: agent list */}
-      <div className="flex w-[260px] shrink-0 flex-col border-r border-zinc-800 bg-zinc-950">
+    <div className="flex h-dvh overflow-hidden bg-zinc-900">
+      {/* ── Left panel ─────────────────────────────────────────────────── */}
+      <div className="flex w-[280px] shrink-0 flex-col overflow-hidden border-r border-zinc-800 bg-zinc-950">
         <SidebarNav />
-        <Separator className="bg-zinc-800" />
-        <div className="flex items-center justify-between px-3 py-2">
-          <h2 className="text-xs font-medium text-zinc-400">Active Agents</h2>
+        <Separator className="shrink-0 bg-zinc-800" />
+
+        {/* Panel header */}
+        <div className="flex shrink-0 items-center justify-between px-3 py-2.5">
+          <div className="flex items-center gap-2">
+            <Bot className="h-3.5 w-3.5 text-zinc-500" />
+            <h2 className="text-xs font-semibold text-zinc-300">Agents</h2>
+            {agents.length > 0 && (
+              <span className="rounded-full bg-zinc-800 px-1.5 py-0.5 text-[10px] text-zinc-400">
+                {agents.length}
+              </span>
+            )}
+          </div>
           <button
             onClick={() => {
               setLoading(true)
               fetchAgents()
             }}
-            aria-label="Refresh agents"
+            aria-label="Refresh"
             className="rounded p-1 text-zinc-500 transition-colors hover:bg-zinc-800 hover:text-zinc-300"
           >
             <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />
           </button>
         </div>
-        <Separator className="bg-zinc-800" />
-        <ScrollArea className="flex-1">
-          <div className="p-2">
-            {agents.length === 0 && !loading && (
-              <div className="px-3 py-8 text-center">
-                <Terminal className="mx-auto h-8 w-8 text-zinc-700" />
-                <p className="mt-3 text-xs text-zinc-500">
-                  No active coding agents.
-                </p>
-                <p className="mt-1 text-[10px] text-zinc-600">
-                  Spawn one from the chat.
-                </p>
-              </div>
-            )}
-            {agents.map((agent) => (
-              <AgentCard
-                key={agent.id}
-                agent={agent}
-                isSelected={agent.id === selectedId}
-                onSelect={() => setSelectedId(agent.id)}
-              />
-            ))}
-          </div>
-        </ScrollArea>
+        <Separator className="shrink-0 bg-zinc-800" />
+
+        {/* Scrollable agent list */}
+        <div className="min-h-0 flex-1 overflow-y-auto p-2">
+          {agents.length === 0 && !loading && (
+            <div className="px-3 py-10 text-center">
+              <Terminal className="mx-auto h-8 w-8 text-zinc-800" />
+              <p className="mt-3 text-xs text-zinc-600">No active agents</p>
+            </div>
+          )}
+
+          <AgentGroup
+            label="Running"
+            agents={running}
+            selectedId={selectedId}
+            onSelect={setSelectedId}
+            now={now}
+          />
+          <AgentGroup
+            label="Idle"
+            agents={idle}
+            selectedId={selectedId}
+            onSelect={setSelectedId}
+            now={now}
+          />
+          <AgentGroup
+            label="Done"
+            agents={done}
+            selectedId={selectedId}
+            onSelect={setSelectedId}
+            now={now}
+          />
+        </div>
       </div>
 
-      {/* Right panel: log viewer */}
+      {/* ── Right panel ────────────────────────────────────────────────── */}
       <main className="flex flex-1 flex-col overflow-hidden">
-        <header className="flex items-center gap-3 border-b border-zinc-800 px-4 py-3">
-          <span className="text-lg" role="img" aria-label="Agents">
-            {'\u{1F916}'}
-          </span>
-          <h1 className="text-sm font-medium text-zinc-200">Coding Agents</h1>
-        </header>
-
         {selectedAgent ? (
-          <LogViewer key={selectedAgent.id} agentId={selectedAgent.id} />
+          <>
+            <AgentDetailHeader agent={selectedAgent} />
+            <LogViewer key={selectedAgent.id} agent={selectedAgent} />
+          </>
         ) : (
-          <div className="flex flex-1 items-center justify-center">
-            <div className="text-center">
-              <Terminal className="mx-auto h-12 w-12 text-zinc-800" />
-              <p className="mt-4 text-sm text-zinc-500">
-                {agents.length > 0
-                  ? 'Select an agent to view its logs'
-                  : 'No active coding agents'}
-              </p>
-            </div>
-          </div>
+          <EmptyState hasAgents={agents.length > 0} />
         )}
       </main>
     </div>
