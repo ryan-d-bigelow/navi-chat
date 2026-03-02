@@ -28,9 +28,24 @@ import type { CanvasState } from '@/lib/canvas'
 import type { Conversation, ChatMessage } from '@/lib/types'
 import type { SyncEvent } from '@/lib/sse'
 import { useChat } from '@ai-sdk/react'
+import { DefaultChatTransport } from 'ai'
 import type { UIMessage } from 'ai'
 import { LayoutList, Menu, PanelRight } from 'lucide-react'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+
+// Stable ref accessor extracted outside render to satisfy react-hooks/refs.
+// The body callback reads the ref at request time, not during render.
+function makeTransport(activeIdRef: React.RefObject<string | null>) {
+  return new DefaultChatTransport({
+    api: '/api/chat',
+    body: () => ({ conversationId: activeIdRef.current }),
+  })
+}
+
+interface PendingStream {
+  conversationId: string
+  content: string
+}
 
 function getTextContent(message: UIMessage): string {
   return message.parts
@@ -54,6 +69,9 @@ export default function ChatPage() {
   const [linearOpen, setLinearOpen] = useState(true)
   const [canvas, setCanvas] = useState<CanvasState>(CANVAS_INITIAL)
   const [input, setInput] = useState('')
+  // Tracks in-progress stream content received via SSE (used when reconnecting
+  // to a conversation that has an active stream from another tab/prior navigation)
+  const [pendingStream, setPendingStream] = useState<PendingStream | null>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
   const activeIdRef = useRef<string | null>(null)
   const canvasCommandCountRef = useRef(0)
@@ -134,6 +152,56 @@ export default function ChatPage() {
                 }
               })
             )
+            // The stream is done — clear any pending stream placeholder for
+            // this conversation so the real persisted message takes over.
+            if (payload.message.role === 'assistant') {
+              setPendingStream((prev) =>
+                prev?.conversationId === payload.conversation_id ? null : prev
+              )
+            }
+            break
+          }
+
+          case 'message_streaming_state': {
+            // Full accumulated content replayed on fresh SSE connect.
+            // Only set if we are NOT actively streaming this ourselves (useChat
+            // handles that case directly via the HTTP stream).
+            const payload = syncEvent.payload as {
+              conversation_id: string
+              content: string
+            }
+            // We guard against overwriting useChat's own stream in the render
+            // path (isStreaming check), but set the state so it's ready.
+            setPendingStream((prev) => {
+              // Don't regress content length (race: delta arrived before state)
+              if (
+                prev?.conversationId === payload.conversation_id &&
+                prev.content.length >= payload.content.length
+              ) {
+                return prev
+              }
+              return {
+                conversationId: payload.conversation_id,
+                content: payload.content,
+              }
+            })
+            break
+          }
+
+          case 'message_streaming': {
+            // Incremental delta from an in-progress stream on another client/tab.
+            const payload = syncEvent.payload as {
+              conversation_id: string
+              delta: string
+            }
+            setPendingStream((prev) => {
+              if (!prev) {
+                // No state yet — create it
+                return { conversationId: payload.conversation_id, content: payload.delta }
+              }
+              if (prev.conversationId !== payload.conversation_id) return prev
+              return { ...prev, content: prev.content + payload.delta }
+            })
             break
           }
         }
@@ -147,8 +215,13 @@ export default function ChatPage() {
 
   const activeConversation = conversations.find((c) => c.id === activeId)
 
+  // Stable transport — body callback reads activeIdRef at request time, not during render
+  // eslint-disable-next-line react-hooks/refs
+  const transport = useMemo(() => makeTransport(activeIdRef), [])
+
   const { messages, sendMessage, status, setMessages, error } = useChat({
     messages: activeConversation ? toUIMessages(activeConversation.messages) : [],
+    transport,
     onError: (err) => {
       console.error('[navi-chat] useChat error:', err)
     },
@@ -184,6 +257,29 @@ export default function ChatPage() {
   })
 
   const isStreaming = status === 'streaming' || status === 'submitted'
+
+  // When not actively streaming via useChat (e.g. after navigating away and
+  // back), show accumulated SSE tokens as a placeholder assistant message so
+  // the user sees the in-progress response and gets new deltas in real time.
+  const displayMessages = useMemo<UIMessage[]>(() => {
+    if (isStreaming) return messages // useChat owns the stream — no overlay needed
+    if (!pendingStream || pendingStream.conversationId !== activeId) return messages
+    if (pendingStream.content.length === 0) return messages
+    // Don't duplicate if useChat already has this content (stream just finished)
+    const lastMsg = messages.at(-1)
+    if (lastMsg?.role === 'assistant') return messages
+    return [
+      ...messages,
+      {
+        id: '__pending_stream__',
+        role: 'assistant' as const,
+        parts: [{ type: 'text' as const, text: pendingStream.content }],
+      } as UIMessage,
+    ]
+  }, [messages, pendingStream, activeId, isStreaming])
+
+  // True when we're showing a live-updating placeholder from SSE
+  const isPendingStream = !isStreaming && pendingStream?.conversationId === activeId && (pendingStream?.content.length ?? 0) > 0
 
   // Watch for canvas tool calls in streaming messages
   useEffect(() => {
@@ -235,6 +331,9 @@ export default function ChatPage() {
       setInput('')
       setSidebarOpen(false)
       setCanvas(CANVAS_INITIAL)
+      // Don't clear pendingStream here — if there's an active stream for this
+      // conversation, the SSE message_streaming_state event will populate it.
+      // For other conversations, the render guard (conversationId check) hides it.
       // Load messages from API
       loadMessages(id).then((msgs) => {
         setConversations((prev) =>
@@ -405,9 +504,9 @@ export default function ChatPage() {
         </header>
 
         {/* Messages */}
-        <ScrollArea className="flex-1" ref={scrollRef}>
+        <ScrollArea className="flex-1" viewportRef={scrollRef}>
           <div className="mx-auto max-w-3xl px-4 py-6 sm:px-6">
-            <MessageList messages={messages} isLoading={isStreaming} />
+            <MessageList messages={displayMessages} isLoading={isStreaming || isPendingStream} />
           </div>
         </ScrollArea>
 

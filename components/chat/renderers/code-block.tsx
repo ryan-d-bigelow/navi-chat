@@ -20,7 +20,7 @@ export function CodeBlock({ language, children }: CodeBlockProps) {
   }, [children])
 
   return (
-    <div className="group relative mb-3 overflow-hidden rounded-lg border border-zinc-700/50 last:mb-0">
+    <div className="group relative mb-3 overflow-x-auto rounded-lg border border-zinc-700/50 last:mb-0">
       <div className="flex items-center justify-between bg-zinc-800/80 px-4 py-1.5">
         <span className="text-xs text-zinc-400">{language}</span>
         <button

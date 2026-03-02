@@ -21,7 +21,7 @@ export function TextMessage({ message }: TextMessageProps) {
   const content = getTextContent(message)
 
   return (
-    <div className="text-sm leading-[1.6] text-zinc-200">
+    <div className="text-sm leading-[1.6] text-zinc-200 overflow-hidden">
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         components={{

@@ -4,6 +4,7 @@ import { SidebarNav } from '@/components/chat/sidebar'
 import { Separator } from '@/components/ui/separator'
 import type { AgentInfo, AgentType } from '@/lib/agents'
 import {
+  ArrowLeft,
   Bot,
   ChevronDown,
   Clock,
@@ -229,48 +230,48 @@ function LogEntry({ line }: { line: LogLine }) {
   })
 
   const tsEl = (
-    <span className="mr-2 shrink-0 select-none text-zinc-700" aria-hidden="true">{ts}</span>
+    <span className="mr-2 hidden shrink-0 select-none text-zinc-700 sm:inline" aria-hidden="true">{ts}</span>
   )
 
   if (line.type === 'thinking') {
     return (
-      <div className="flex text-purple-400/90" role="listitem">
+      <div className="flex min-w-0 text-purple-400/90" role="listitem">
         {tsEl}
         <span className="mr-1.5 select-none" aria-hidden="true">🧠</span>
-        <span>{line.content}</span>
+        <span className="min-w-0 break-words">{line.content}</span>
       </div>
     )
   }
   if (line.type === 'error') {
     return (
-      <div className="flex text-red-400" role="listitem">
+      <div className="flex min-w-0 text-red-400" role="listitem">
         {tsEl}
         <span className="mr-1.5 select-none text-red-600" aria-hidden="true">✗</span>
-        <span>{line.content}</span>
+        <span className="min-w-0 break-words">{line.content}</span>
       </div>
     )
   }
   if (line.type === 'tool') {
     return (
-      <div className="flex text-amber-400/80" role="listitem">
+      <div className="flex min-w-0 text-amber-400/80" role="listitem">
         {tsEl}
         <span className="mr-1.5 select-none" aria-hidden="true">⚙</span>
-        <span>{line.content}</span>
+        <span className="min-w-0 break-words">{line.content}</span>
       </div>
     )
   }
   if (line.type === 'system') {
     return (
-      <div className="flex text-zinc-600 italic" role="listitem">
+      <div className="flex min-w-0 text-zinc-600 italic" role="listitem">
         {tsEl}
-        <span>{line.content}</span>
+        <span className="min-w-0 break-words">{line.content}</span>
       </div>
     )
   }
   return (
-    <div className="flex text-zinc-400" role="listitem">
+    <div className="flex min-w-0 text-zinc-400" role="listitem">
       {tsEl}
-      <span>{line.content}</span>
+      <span className="min-w-0 break-words">{line.content}</span>
     </div>
   )
 }
@@ -362,7 +363,7 @@ function LogViewer({ agent }: { agent: AgentInfo }) {
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
       {/* Log toolbar */}
-      <div className="flex shrink-0 items-center gap-3 border-b border-zinc-800/80 bg-zinc-950/50 px-4 py-2">
+      <div className="flex shrink-0 items-center gap-2 border-b border-zinc-800/80 bg-zinc-950/50 px-3 py-2 sm:gap-3 sm:px-4">
         {/* Connection status */}
         <span className="flex items-center gap-1.5 text-[10px]" role="status" aria-label={connected ? 'Connected — live streaming' : 'Connecting to log stream'}>
           {connected ? (
@@ -451,7 +452,7 @@ function AgentDetailHeader({ agent }: { agent: AgentInfo }) {
   }, [agent.startedAt, agent.status])
 
   return (
-    <header className="shrink-0 border-b border-zinc-800 bg-zinc-950/60 px-5 py-3">
+    <header className="shrink-0 border-b border-zinc-800 bg-zinc-950/60 px-4 py-3">
       <div className="flex items-start gap-3">
         <div
           className={`mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border ${meta.color}`}
@@ -460,39 +461,43 @@ function AgentDetailHeader({ agent }: { agent: AgentInfo }) {
           {meta.icon}
         </div>
         <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
             <h1 className="text-sm font-semibold text-zinc-100">{agent.name}</h1>
-            <StatusDot status={agent.status} />
-            <span
-              className={`text-xs ${
-                agent.status === 'running'
-                  ? 'text-emerald-400'
-                  : agent.status === 'idle'
-                    ? 'text-yellow-400'
-                    : 'text-zinc-500'
-              }`}
-            >
-              {agent.status}
-            </span>
+            <div className="flex items-center gap-1.5">
+              <StatusDot status={agent.status} />
+              <span
+                className={`text-xs ${
+                  agent.status === 'running'
+                    ? 'text-emerald-400'
+                    : agent.status === 'idle'
+                      ? 'text-yellow-400'
+                      : 'text-zinc-500'
+                }`}
+              >
+                {agent.status}
+              </span>
+            </div>
+            <div className="flex items-center gap-1 text-xs text-zinc-500">
+              <Clock className="h-3 w-3" aria-hidden="true" />
+              <time>{elapsed}</time>
+            </div>
           </div>
           <p className="mt-0.5 truncate text-xs text-zinc-500" title={agent.task}>
             {agent.task}
           </p>
-        </div>
-        <div className="shrink-0 text-right">
-          <div className="flex items-center gap-1 text-xs text-zinc-500">
-            <Clock className="h-3 w-3" aria-hidden="true" />
-            <time>{elapsed}</time>
-          </div>
-          {agent.pid > 0 && (
-            <div className="mt-0.5 text-[10px] text-zinc-700">PID {agent.pid}</div>
-          )}
-          {agent.sessionKey && (
-            <div
-              className="mt-0.5 max-w-[160px] truncate text-[10px] text-zinc-700"
-              title={agent.sessionKey}
-            >
-              {agent.sessionKey}
+          {(agent.pid > 0 || agent.sessionKey) && (
+            <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5">
+              {agent.pid > 0 && (
+                <span className="text-[10px] text-zinc-700">PID {agent.pid}</span>
+              )}
+              {agent.sessionKey && (
+                <span
+                  className="max-w-[200px] truncate text-[10px] text-zinc-700"
+                  title={agent.sessionKey}
+                >
+                  {agent.sessionKey}
+                </span>
+              )}
             </div>
           )}
         </div>
@@ -612,8 +617,11 @@ export default function AgentsPage() {
 
   return (
     <div className="flex h-dvh overflow-hidden bg-zinc-900">
-      {/* ── Left panel ─────────────────────────────────────────────────── */}
-      <nav aria-label="Agent list" className="glass flex w-[280px] shrink-0 flex-col overflow-hidden border-r border-zinc-800/60">
+      {/* ── Left panel — always visible on md+, toggles on mobile ──── */}
+      <nav
+        aria-label="Agent list"
+        className={`glass flex w-full flex-col overflow-hidden border-r border-zinc-800/60 md:w-[280px] md:shrink-0 ${selectedAgent ? 'hidden md:flex' : 'flex'}`}
+      >
         <SidebarNav />
         <Separator className="shrink-0 bg-zinc-800/60" />
 
@@ -674,10 +682,24 @@ export default function AgentsPage() {
         </div>
       </nav>
 
-      {/* ── Right panel ────────────────────────────────────────────────── */}
-      <main className="flex flex-1 flex-col overflow-hidden" aria-label="Agent details">
+      {/* ── Right panel — always visible on md+, toggles on mobile ── */}
+      <main
+        className={`flex-1 flex-col overflow-hidden ${selectedAgent ? 'flex' : 'hidden md:flex'}`}
+        aria-label="Agent details"
+      >
         {selectedAgent ? (
           <>
+            {/* Mobile back button */}
+            <div className="flex shrink-0 items-center gap-2 border-b border-zinc-800/60 bg-zinc-950/60 px-3 py-2 md:hidden">
+              <button
+                onClick={() => setSelectedId(null)}
+                className="flex min-h-[44px] items-center gap-1.5 rounded-lg px-2 text-sm text-zinc-400 transition-colors hover:text-zinc-200 focus-ring"
+                aria-label="Back to agent list"
+              >
+                <ArrowLeft className="h-4 w-4" aria-hidden="true" />
+                Agents
+              </button>
+            </div>
             <AgentDetailHeader agent={selectedAgent} />
             <LogViewer key={selectedAgent.id} agent={selectedAgent} />
           </>
