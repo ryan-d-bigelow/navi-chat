@@ -36,25 +36,26 @@ export function SidebarNav() {
   ] as const
 
   return (
-    <div className="flex gap-1 p-3">
+    <nav aria-label="Main navigation" className="flex gap-1 p-3">
       {links.map(({ href, label, icon: Icon }) => {
         const active = pathname.startsWith(href)
         return (
           <Link
             key={href}
             href={href}
-            className={`flex flex-1 items-center justify-center gap-1.5 rounded-lg px-2 py-1.5 text-xs font-medium transition-colors ${
+            aria-current={active ? 'page' : undefined}
+            className={`flex flex-1 items-center justify-center gap-1.5 rounded-lg px-2 py-1.5 text-xs font-medium transition-colors focus-ring ${
               active
                 ? 'bg-zinc-800 text-zinc-100'
                 : 'text-zinc-400 hover:bg-zinc-800/50 hover:text-zinc-300'
             }`}
           >
-            <Icon className="h-3.5 w-3.5" />
+            <Icon className="h-3.5 w-3.5" aria-hidden="true" />
             {label}
           </Link>
         )
       })}
-    </div>
+    </nav>
   )
 }
 
@@ -68,32 +69,33 @@ export function Sidebar({
   return (
     <nav
       aria-label="Conversations"
-      className="flex h-full w-[260px] flex-col border-r border-zinc-800 bg-zinc-950"
+      className="glass flex h-full w-[260px] flex-col border-r border-zinc-800/60"
     >
       <SidebarNav />
-      <Separator className="bg-zinc-800" />
+      <Separator className="bg-zinc-800/60" />
       <div className="p-3">
         <Button
           onClick={onNew}
           variant="outline"
-          className="w-full justify-start gap-2 border-zinc-700 bg-zinc-800 text-zinc-300 hover:bg-zinc-700 hover:text-zinc-100 focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-950"
+          aria-label="Start a new chat"
+          className="w-full justify-start gap-2 border-zinc-700/60 bg-zinc-800/60 text-zinc-300 transition-all hover:bg-zinc-700 hover:text-zinc-100 focus-ring"
         >
-          <MessageSquarePlus className="h-4 w-4" />
+          <MessageSquarePlus className="h-4 w-4" aria-hidden="true" />
           New Chat
         </Button>
       </div>
-      <Separator className="bg-zinc-800" />
+      <Separator className="bg-zinc-800/60" />
       <ScrollArea className="flex-1">
-        <ul role="list" className="p-2">
+        <ul role="list" aria-label="Conversation history" className="p-2">
           {conversations.length === 0 && (
             <li>
-              <p className="px-3 py-6 text-center text-xs text-zinc-400">
+              <p className="px-3 py-6 text-center text-xs text-zinc-500">
                 No conversations yet
               </p>
             </li>
           )}
           {conversations.map((conv) => (
-            <li key={conv.id}>
+            <li key={conv.id} className="animate-slide-in-left">
               <ConversationItem
                 conversation={conv}
                 isActive={conv.id === activeId}
@@ -123,17 +125,18 @@ function ConversationItem({
     <div
       className={`group relative mb-0.5 flex w-full items-center rounded-lg text-left text-sm transition-colors ${
         isActive
-          ? 'bg-zinc-800 text-zinc-100'
-          : 'text-zinc-300 hover:bg-zinc-800/50 hover:text-zinc-200'
+          ? 'bg-zinc-800/80 text-zinc-100'
+          : 'text-zinc-300 hover:bg-zinc-800/40 hover:text-zinc-200'
       }`}
     >
       <button
         onClick={onSelect}
         aria-current={isActive ? 'page' : undefined}
-        className="min-w-0 flex-1 rounded-lg px-3 py-2.5 text-left focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-950"
+        aria-label={`${conversation.title}, ${timeAgo(conversation.updatedAt)}`}
+        className="min-w-0 flex-1 rounded-lg px-3 py-2.5 text-left focus-ring"
       >
         <p className="truncate font-medium">{conversation.title}</p>
-        <p className="mt-0.5 text-xs text-zinc-400">
+        <p className="mt-0.5 text-xs text-zinc-500">
           {timeAgo(conversation.updatedAt)}
         </p>
       </button>
@@ -143,10 +146,9 @@ function ConversationItem({
           onDelete()
         }}
         aria-label={`Delete ${conversation.title}`}
-        className="ml-1 mr-1 shrink-0 rounded p-2 text-zinc-500 opacity-0 transition-opacity hover:bg-zinc-700 hover:text-zinc-300 focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-950 group-hover:opacity-100"
+        className="ml-1 mr-1 shrink-0 rounded p-2 text-zinc-500 opacity-0 transition-opacity hover:bg-zinc-700 hover:text-zinc-300 focus-visible:opacity-100 focus-ring group-hover:opacity-100"
       >
-        <Trash2 className="h-3.5 w-3.5" />
-        <span className="sr-only">Delete {conversation.title}</span>
+        <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
       </button>
     </div>
   )

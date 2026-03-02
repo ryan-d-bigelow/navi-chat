@@ -136,7 +136,7 @@ function IssueCard({ issue }: { issue: LinearIssue }) {
       target="_blank"
       rel="noopener noreferrer"
       aria-label={`${issue.identifier}: ${issue.title}`}
-      className="group flex items-start gap-2.5 rounded-lg px-2 py-2 transition-colors hover:bg-zinc-800/60 focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-950"
+      className="group flex items-start gap-2.5 rounded-lg px-2 py-2 transition-colors hover:bg-zinc-800/60 focus-ring"
     >
       <div className="mt-1.5 shrink-0">
         <PriorityDot priority={issue.priority} />
@@ -170,7 +170,7 @@ function SectionHeader({ label, count, muted }: { label: string; count: number; 
       <span className="text-[11px] font-semibold uppercase tracking-wider text-zinc-400">
         {label}
       </span>
-      <span className="rounded bg-zinc-800 px-1.5 py-0.5 text-[10px] font-medium text-zinc-400">
+      <span className="rounded bg-zinc-800 px-1.5 py-0.5 text-[10px] font-medium text-zinc-400" aria-label={`${count} issues`}>
         {count}
       </span>
       <div className="h-px flex-1 bg-zinc-800" aria-hidden="true" />
@@ -239,10 +239,10 @@ export function LinearPanel({ onClose }: LinearPanelProps) {
   return (
     <aside
       aria-label="Linear tasks"
-      className="flex h-full w-[300px] shrink-0 flex-col border-l border-zinc-800 bg-zinc-950"
+      className="glass flex h-full w-[300px] shrink-0 flex-col border-l border-zinc-800/60"
     >
       {/* Header */}
-      <header className="flex items-center justify-between border-b border-zinc-800 px-3 py-3">
+      <header className="flex items-center justify-between border-b border-zinc-800/60 px-3 py-3">
         <div className="flex items-center gap-2">
           {/* Linear brand mark */}
           <div className="flex h-4 w-4 shrink-0 items-center justify-center rounded bg-[#5E6AD2]" aria-hidden="true">
@@ -260,16 +260,16 @@ export function LinearPanel({ onClose }: LinearPanelProps) {
             onClick={() => fetchIssues(true)}
             disabled={refreshing || loading}
             aria-label="Refresh tasks"
-            className="flex min-h-[44px] min-w-[44px] items-center justify-center rounded text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-300 disabled:opacity-40 focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-950"
+            className="flex min-h-[44px] min-w-[44px] items-center justify-center rounded-lg text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-300 disabled:opacity-40 focus-ring"
           >
-            <RefreshCw className={`h-3.5 w-3.5 ${refreshing ? 'animate-spin motion-reduce:animate-none' : ''}`} />
+            <RefreshCw className={`h-3.5 w-3.5 ${refreshing ? 'animate-spin motion-reduce:animate-none' : ''}`} aria-hidden="true" />
           </button>
           <button
             onClick={onClose}
             aria-label="Close tasks panel"
-            className="flex min-h-[44px] min-w-[44px] items-center justify-center rounded text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-300 focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-950"
+            className="flex min-h-[44px] min-w-[44px] items-center justify-center rounded-lg text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-300 focus-ring"
           >
-            <X className="h-3.5 w-3.5" />
+            <X className="h-3.5 w-3.5" aria-hidden="true" />
           </button>
         </div>
       </header>
@@ -291,7 +291,7 @@ export function LinearPanel({ onClose }: LinearPanelProps) {
             <p className="text-xs text-red-400">{error}</p>
             <button
               onClick={() => fetchIssues()}
-              className="mt-2 min-h-[44px] rounded px-3 py-2 text-xs text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-200 focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-950"
+              className="mt-2 min-h-[44px] rounded-lg px-3 py-2 text-xs text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-200 focus-ring"
             >
               Retry
             </button>
@@ -299,8 +299,8 @@ export function LinearPanel({ onClose }: LinearPanelProps) {
         )}
 
         {!loading && !error && issues.length === 0 && (
-          <div className="px-3 py-10 text-center">
-            <p className="text-xs text-zinc-400">No active tasks</p>
+          <div className="px-3 py-10 text-center" role="status">
+            <p className="text-xs text-zinc-500">No active tasks</p>
           </div>
         )}
 
@@ -344,10 +344,10 @@ export function LinearPanel({ onClose }: LinearPanelProps) {
 
       {/* Footer */}
       {lastUpdated && (
-        <footer className="border-t border-zinc-800 px-3 py-2">
+        <footer className="border-t border-zinc-800/60 px-3 py-2">
           <p className="text-[10px] text-zinc-500">
             Refreshes every 60s · Last:{' '}
-            {lastUpdated.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+            <time>{lastUpdated.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</time>
           </p>
         </footer>
       )}

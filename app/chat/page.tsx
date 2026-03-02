@@ -3,6 +3,7 @@
 import { ChatInput } from '@/components/chat/chat-input'
 import { MessageList } from '@/components/chat/message-list'
 import { Sidebar } from '@/components/chat/sidebar'
+import { CanvasPanel } from '@/components/canvas/canvas-panel'
 import { LinearPanel } from '@/components/linear/linear-panel'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import {
@@ -18,11 +19,17 @@ import {
   saveMessage,
   updateConversationTitle,
 } from '@/lib/storage'
+import {
+  CANVAS_INITIAL,
+  applyCanvasCommand,
+  extractCanvasCommands,
+} from '@/lib/canvas'
+import type { CanvasState } from '@/lib/canvas'
 import type { Conversation, ChatMessage } from '@/lib/types'
 import type { SyncEvent } from '@/lib/sse'
 import { useChat } from '@ai-sdk/react'
 import type { UIMessage } from 'ai'
-import { LayoutList, Menu } from 'lucide-react'
+import { LayoutList, Menu, PanelRight } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 function getTextContent(message: UIMessage): string {
@@ -45,9 +52,11 @@ export default function ChatPage() {
   const [activeId, setActiveId] = useState<string | null>(null)
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [linearOpen, setLinearOpen] = useState(true)
+  const [canvas, setCanvas] = useState<CanvasState>(CANVAS_INITIAL)
   const [input, setInput] = useState('')
   const scrollRef = useRef<HTMLDivElement>(null)
   const activeIdRef = useRef<string | null>(null)
+  const canvasCommandCountRef = useRef(0)
 
   // Keep ref in sync for use in callbacks
   useEffect(() => {
@@ -176,6 +185,29 @@ export default function ChatPage() {
 
   const isStreaming = status === 'streaming' || status === 'submitted'
 
+  // Watch for canvas tool calls in streaming messages
+  useEffect(() => {
+    const lastAssistant = messages.filter((m) => m.role === 'assistant').at(-1)
+    if (!lastAssistant) return
+
+    const commands = extractCanvasCommands(lastAssistant)
+    if (commands.length === 0) return
+
+    // Only apply new commands (avoid re-applying on every render)
+    if (commands.length > canvasCommandCountRef.current) {
+      const newCommands = commands.slice(canvasCommandCountRef.current)
+      setCanvas((prev) =>
+        newCommands.reduce((state, cmd) => applyCanvasCommand(state, cmd), prev)
+      )
+      canvasCommandCountRef.current = commands.length
+    }
+  }, [messages])
+
+  // Reset canvas command counter when conversation changes
+  useEffect(() => {
+    canvasCommandCountRef.current = 0
+  }, [activeId])
+
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight
@@ -193,6 +225,7 @@ export default function ChatPage() {
       setMessages([])
       setInput('')
       setSidebarOpen(false)
+      setCanvas(CANVAS_INITIAL)
     })
   }, [setMessages])
 
@@ -201,6 +234,7 @@ export default function ChatPage() {
       setActiveId(id)
       setInput('')
       setSidebarOpen(false)
+      setCanvas(CANVAS_INITIAL)
       // Load messages from API
       loadMessages(id).then((msgs) => {
         setConversations((prev) =>
@@ -219,6 +253,7 @@ export default function ChatPage() {
       if (activeId === id) {
         setActiveId(null)
         setMessages([])
+        setCanvas(CANVAS_INITIAL)
       }
     },
     [activeId, setMessages]
@@ -278,12 +313,30 @@ export default function ChatPage() {
       saveMessage(currentActiveId, userMsg)
     }
 
+    // Reset canvas command counter for new response
+    canvasCommandCountRef.current = 0
+
     setInput('')
     sendMessage({ text })
   }, [activeId, input, sendMessage, conversations])
 
+  const handleCanvasClose = useCallback(() => {
+    setCanvas((prev) => ({ ...prev, visible: false }))
+  }, [])
+
+  const handleCanvasToggle = useCallback(() => {
+    setCanvas((prev) => ({ ...prev, visible: !prev.visible }))
+  }, [])
+
+  const canvasHasContent = canvas.content !== null || canvas.url !== null
+
   return (
     <div className="flex h-dvh bg-zinc-900">
+      {/* Skip navigation link */}
+      <a href="#chat-input" className="skip-nav">
+        Skip to chat input
+      </a>
+
       {/* Desktop sidebar */}
       <div className="hidden md:block">
         <Sidebar
@@ -297,7 +350,7 @@ export default function ChatPage() {
 
       {/* Mobile sidebar (Sheet) */}
       <Sheet open={sidebarOpen} onOpenChange={setSidebarOpen}>
-        <SheetContent side="left" className="w-[260px] border-zinc-800 bg-zinc-950 p-0">
+        <SheetContent side="left" className="w-[260px] border-zinc-800/60 bg-zinc-950/95 p-0 backdrop-blur-xl">
           <SheetTitle className="sr-only">Conversations</SheetTitle>
           <Sidebar
             conversations={conversations}
@@ -310,49 +363,65 @@ export default function ChatPage() {
       </Sheet>
 
       {/* Main chat area */}
-      <div className="flex flex-1 flex-col overflow-hidden">
+      <main className="flex flex-1 flex-col overflow-hidden" id="main-content">
         {/* Header */}
-        <div className="flex items-center gap-3 border-b border-zinc-800 px-4 py-3">
+        <header className="glass-subtle flex items-center gap-3 border-b border-zinc-800/60 px-4 py-3">
           <button
             onClick={() => setSidebarOpen(true)}
-            className="rounded-lg p-1.5 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200 md:hidden"
+            aria-label="Open conversation sidebar"
+            className="flex min-h-[44px] min-w-[44px] items-center justify-center rounded-lg text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-200 focus-ring md:hidden"
           >
-            <Menu className="h-5 w-5" />
+            <Menu className="h-5 w-5" aria-hidden="true" />
           </button>
-          <span className="text-lg">🧚</span>
-          <h1 className="text-sm font-medium text-zinc-200">Navi Chat</h1>
+          <span className="text-lg" role="img" aria-label="Navi">🧚</span>
+          <h1 className="text-sm font-semibold tracking-tight text-zinc-200">Navi Chat</h1>
           <div className="flex-1" />
           <button
+            onClick={handleCanvasToggle}
+            aria-label={canvas.visible ? 'Hide canvas panel' : 'Show canvas panel'}
+            aria-pressed={canvas.visible}
+            className={`hidden min-h-[44px] min-w-[44px] items-center justify-center rounded-lg transition-colors focus-ring md:flex ${
+              canvas.visible
+                ? 'bg-zinc-800 text-emerald-400'
+                : canvasHasContent
+                  ? 'text-emerald-400/60 hover:bg-zinc-800 hover:text-emerald-400'
+                  : 'text-zinc-400 hover:bg-zinc-800 hover:text-zinc-300'
+            }`}
+          >
+            <PanelRight className="h-4 w-4" aria-hidden="true" />
+          </button>
+          <button
             onClick={() => setLinearOpen((v) => !v)}
-            className={`rounded-lg p-1.5 transition-colors ${
+            aria-label={linearOpen ? 'Hide Linear tasks panel' : 'Show Linear tasks panel'}
+            aria-pressed={linearOpen}
+            className={`hidden min-h-[44px] min-w-[44px] items-center justify-center rounded-lg transition-colors focus-ring md:flex ${
               linearOpen
                 ? 'bg-zinc-800 text-violet-400'
-                : 'text-zinc-500 hover:bg-zinc-800 hover:text-zinc-300'
+                : 'text-zinc-400 hover:bg-zinc-800 hover:text-zinc-300'
             }`}
-            title={linearOpen ? 'Hide tasks' : 'Show tasks'}
           >
-            <LayoutList className="h-4 w-4" />
+            <LayoutList className="h-4 w-4" aria-hidden="true" />
           </button>
-        </div>
+        </header>
 
         {/* Messages */}
         <ScrollArea className="flex-1" ref={scrollRef}>
-          <div className="mx-auto max-w-3xl px-4 py-6">
+          <div className="mx-auto max-w-3xl px-4 py-6 sm:px-6">
             <MessageList messages={messages} isLoading={isStreaming} />
           </div>
         </ScrollArea>
 
         {/* Error display */}
         {error && (
-          <div className="mx-auto w-full max-w-3xl px-4 py-2">
-            <div className="rounded-lg border border-red-800 bg-red-950 px-3 py-2 text-xs text-red-300">
+          <div className="mx-auto w-full max-w-3xl px-4 py-2 sm:px-6" role="alert" aria-live="assertive">
+            <div className="rounded-xl border border-red-800/60 bg-red-950/80 px-4 py-2.5 text-xs text-red-300">
               Error: {error.message}
             </div>
           </div>
         )}
 
-        {/* Input */}
-        <div className="mx-auto w-full max-w-3xl px-4 pb-4 pt-2">
+        {/* Input — sticky at bottom */}
+        <div id="chat-input" className="mx-auto w-full max-w-3xl px-4 pb-4 pt-2 sm:px-6">
           <ChatInput
             input={input}
             setInput={setInput}
@@ -360,7 +429,18 @@ export default function ChatPage() {
             isLoading={isStreaming}
           />
         </div>
-      </div>
+      </main>
+
+      {/* Canvas panel — desktop only */}
+      {canvas.visible && (
+        <div className="hidden md:flex">
+          <CanvasPanel
+            canvas={canvas}
+            onClose={handleCanvasClose}
+            isStreaming={isStreaming}
+          />
+        </div>
+      )}
 
       {/* Linear task panel — desktop only */}
       {linearOpen && (

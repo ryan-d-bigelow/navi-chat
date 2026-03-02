@@ -21,7 +21,7 @@ export function TextMessage({ message }: TextMessageProps) {
   const content = getTextContent(message)
 
   return (
-    <div className="text-sm leading-relaxed text-zinc-200">
+    <div className="text-sm leading-[1.6] text-zinc-200">
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         components={{
@@ -61,9 +61,10 @@ export function TextMessage({ message }: TextMessageProps) {
               href={href}
               target="_blank"
               rel="noopener noreferrer"
-              className="text-blue-400 underline hover:text-blue-300"
+              className="text-blue-400 underline decoration-blue-400/30 underline-offset-2 transition-colors hover:text-blue-300 hover:decoration-blue-300/50 focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-900"
             >
               {children}
+              <span className="sr-only"> (opens in new tab)</span>
             </a>
           ),
           blockquote: ({ children }) => (

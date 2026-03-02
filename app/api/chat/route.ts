@@ -1,5 +1,6 @@
-import { streamText } from 'ai'
+import { streamText, stepCountIs } from 'ai'
 import { createOpenAI } from '@ai-sdk/openai'
+import { z } from 'zod'
 
 const GATEWAY_URL = 'http://127.0.0.1:18789'
 const GATEWAY_TOKEN = '0793b4b96017e58f189b26117aa1e9a3258131b73482cdb8'
@@ -45,6 +46,35 @@ export async function POST(req: Request) {
   const result = streamText({
     model: openclaw.chat('agent:main'),
     messages: coreMessages,
+    tools: {
+      canvas: {
+        description:
+          'Present visual content in the canvas side panel. Use this when your response includes structured data, diagrams, plans, tables, or formatted content that benefits from a dedicated visual space. Actions: "present" shows content, "hide" closes the panel, "navigate" loads a URL.',
+        inputSchema: z.object({
+          action: z
+            .enum(['present', 'hide', 'navigate'])
+            .describe('Canvas action to perform'),
+          content: z
+            .string()
+            .optional()
+            .describe(
+              'Markdown or HTML content to display (for present action)'
+            ),
+          url: z
+            .string()
+            .optional()
+            .describe('URL to load in the canvas (for navigate action)'),
+          title: z
+            .string()
+            .optional()
+            .describe('Title for the canvas panel header'),
+        }),
+        // Canvas tool is client-side — result is forwarded to the UI for rendering.
+        // The execute stub lets the type checker pass; actual canvas rendering happens in the frontend.
+        execute: async (args: { action: string; content?: string; url?: string; title?: string }) => args,
+      },
+    },
+    stopWhen: stepCountIs(3),
   })
   return result.toUIMessageStreamResponse()
 }

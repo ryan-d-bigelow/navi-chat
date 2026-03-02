@@ -34,61 +34,61 @@ const TYPE_META: Record<
 > = {
   coder: {
     label: 'Coding Agent',
-    icon: <Terminal className="h-3 w-3" />,
+    icon: <Terminal className="h-3 w-3" aria-hidden="true" />,
     color: 'text-sky-400 bg-sky-500/10 border-sky-500/20',
     dot: 'bg-sky-400',
   },
   researcher: {
     label: 'Researcher',
-    icon: <Search className="h-3 w-3" />,
+    icon: <Search className="h-3 w-3" aria-hidden="true" />,
     color: 'text-violet-400 bg-violet-500/10 border-violet-500/20',
     dot: 'bg-violet-400',
   },
   home: {
     label: 'Home',
-    icon: <Home className="h-3 w-3" />,
+    icon: <Home className="h-3 w-3" aria-hidden="true" />,
     color: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20',
     dot: 'bg-emerald-400',
   },
   wevo: {
     label: 'Wevo',
-    icon: <Zap className="h-3 w-3" />,
+    icon: <Zap className="h-3 w-3" aria-hidden="true" />,
     color: 'text-orange-400 bg-orange-500/10 border-orange-500/20',
     dot: 'bg-orange-400',
   },
   browser: {
     label: 'Scout',
-    icon: <Globe className="h-3 w-3" />,
+    icon: <Globe className="h-3 w-3" aria-hidden="true" />,
     color: 'text-cyan-400 bg-cyan-500/10 border-cyan-500/20',
     dot: 'bg-cyan-400',
   },
   cron: {
     label: 'Cron Job',
-    icon: <Timer className="h-3 w-3" />,
+    icon: <Timer className="h-3 w-3" aria-hidden="true" />,
     color: 'text-amber-400 bg-amber-500/10 border-amber-500/20',
     dot: 'bg-amber-400',
   },
   navi: {
     label: 'Navi',
-    icon: <Bot className="h-3 w-3" />,
+    icon: <Bot className="h-3 w-3" aria-hidden="true" />,
     color: 'text-teal-400 bg-teal-500/10 border-teal-500/20',
     dot: 'bg-teal-400',
   },
   slack: {
     label: 'Slack',
-    icon: <Cpu className="h-3 w-3" />,
+    icon: <Cpu className="h-3 w-3" aria-hidden="true" />,
     color: 'text-rose-400 bg-rose-500/10 border-rose-500/20',
     dot: 'bg-rose-400',
   },
   webchat: {
     label: 'Web Chat',
-    icon: <Bot className="h-3 w-3" />,
+    icon: <Bot className="h-3 w-3" aria-hidden="true" />,
     color: 'text-indigo-400 bg-indigo-500/10 border-indigo-500/20',
     dot: 'bg-indigo-400',
   },
   process: {
     label: 'Process',
-    icon: <Cpu className="h-3 w-3" />,
+    icon: <Cpu className="h-3 w-3" aria-hidden="true" />,
     color: 'text-zinc-400 bg-zinc-500/10 border-zinc-500/20',
     dot: 'bg-zinc-400',
   },
@@ -128,18 +128,19 @@ interface LogLine {
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
 function StatusDot({ status }: { status: AgentInfo['status'] }) {
+  const label = status === 'running' ? 'Running' : status === 'idle' ? 'Idle' : 'Done'
   if (status === 'running') {
     return (
-      <span className="relative flex h-2 w-2 shrink-0">
-        <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
+      <span className="relative flex h-2 w-2 shrink-0" role="img" aria-label={label}>
+        <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75 motion-reduce:animate-none" />
         <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-400" />
       </span>
     )
   }
   if (status === 'idle') {
-    return <span className="h-2 w-2 shrink-0 rounded-full bg-yellow-400/80" />
+    return <span className="h-2 w-2 shrink-0 rounded-full bg-yellow-400/80" role="img" aria-label={label} />
   }
-  return <span className="h-2 w-2 shrink-0 rounded-full bg-zinc-600" />
+  return <span className="h-2 w-2 shrink-0 rounded-full bg-zinc-600" role="img" aria-label={label} />
 }
 
 function TypeBadge({ agentType }: { agentType: AgentType }) {
@@ -158,20 +159,20 @@ function AgentCard({
   agent,
   isSelected,
   onSelect,
-  now,
 }: {
   agent: AgentInfo
   isSelected: boolean
   onSelect: () => void
   now: number
 }) {
-  const meta = TYPE_META[agent.agentType]
   const origin = getOriginLabel(agent)
 
   return (
     <button
       onClick={onSelect}
-      className={`group w-full rounded-lg border p-3 text-left transition-all ${
+      aria-current={isSelected ? 'true' : undefined}
+      aria-label={`${agent.name} — ${agent.status}, ${TYPE_META[agent.agentType].label}`}
+      className={`group w-full rounded-lg border p-3 text-left transition-all focus-ring ${
         isSelected
           ? 'border-zinc-700 bg-zinc-800 shadow-sm'
           : 'border-transparent hover:border-zinc-800 hover:bg-zinc-800/40'
@@ -198,18 +199,18 @@ function AgentCard({
       <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-[10px] text-zinc-600">
         {agent.source === 'process' && agent.pid > 0 && (
           <span className="flex items-center gap-0.5">
-            <Cpu className="h-2.5 w-2.5" />
+            <Cpu className="h-2.5 w-2.5" aria-hidden="true" />
             PID {agent.pid}
           </span>
         )}
         {agent.model && (
-          <span className="truncate max-w-[100px]">{agent.model.split('/').pop()}</span>
+          <span className="max-w-[100px] truncate">{agent.model.split('/').pop()}</span>
         )}
         {origin && (
-          <span className="truncate max-w-[80px]">{origin}</span>
+          <span className="max-w-[80px] truncate">{origin}</span>
         )}
-        <span className="flex items-center gap-0.5 ml-auto">
-          <Clock className="h-2.5 w-2.5" />
+        <span className="ml-auto flex items-center gap-0.5">
+          <Clock className="h-2.5 w-2.5" aria-hidden="true" />
           {timeElapsed(agent.startedAt)}
         </span>
       </div>
@@ -228,46 +229,46 @@ function LogEntry({ line }: { line: LogLine }) {
   })
 
   const tsEl = (
-    <span className="mr-2 shrink-0 select-none text-zinc-700">{ts}</span>
+    <span className="mr-2 shrink-0 select-none text-zinc-700" aria-hidden="true">{ts}</span>
   )
 
   if (line.type === 'thinking') {
     return (
-      <div className="flex text-purple-400/90">
+      <div className="flex text-purple-400/90" role="listitem">
         {tsEl}
-        <span className="mr-1.5 select-none">🧠</span>
+        <span className="mr-1.5 select-none" aria-hidden="true">🧠</span>
         <span>{line.content}</span>
       </div>
     )
   }
   if (line.type === 'error') {
     return (
-      <div className="flex text-red-400">
+      <div className="flex text-red-400" role="listitem">
         {tsEl}
-        <span className="mr-1.5 select-none text-red-600">✗</span>
+        <span className="mr-1.5 select-none text-red-600" aria-hidden="true">✗</span>
         <span>{line.content}</span>
       </div>
     )
   }
   if (line.type === 'tool') {
     return (
-      <div className="flex text-amber-400/80">
+      <div className="flex text-amber-400/80" role="listitem">
         {tsEl}
-        <span className="mr-1.5 select-none">⚙</span>
+        <span className="mr-1.5 select-none" aria-hidden="true">⚙</span>
         <span>{line.content}</span>
       </div>
     )
   }
   if (line.type === 'system') {
     return (
-      <div className="flex text-zinc-600 italic">
+      <div className="flex text-zinc-600 italic" role="listitem">
         {tsEl}
         <span>{line.content}</span>
       </div>
     )
   }
   return (
-    <div className="flex text-zinc-400">
+    <div className="flex text-zinc-400" role="listitem">
       {tsEl}
       <span>{line.content}</span>
     </div>
@@ -363,37 +364,38 @@ function LogViewer({ agent }: { agent: AgentInfo }) {
       {/* Log toolbar */}
       <div className="flex shrink-0 items-center gap-3 border-b border-zinc-800/80 bg-zinc-950/50 px-4 py-2">
         {/* Connection status */}
-        <span className="flex items-center gap-1.5 text-[10px]">
+        <span className="flex items-center gap-1.5 text-[10px]" role="status" aria-label={connected ? 'Connected — live streaming' : 'Connecting to log stream'}>
           {connected ? (
             <>
-              <Wifi className="h-3 w-3 text-emerald-500" />
+              <Wifi className="h-3 w-3 text-emerald-500" aria-hidden="true" />
               <span className="text-emerald-500">Live</span>
             </>
           ) : (
             <>
-              <WifiOff className="h-3 w-3 text-zinc-600" />
+              <WifiOff className="h-3 w-3 text-zinc-600" aria-hidden="true" />
               <span className="text-zinc-600">Connecting…</span>
             </>
           )}
         </span>
 
-        <span className="text-[10px] text-zinc-600">{lines.length} lines</span>
+        <span className="text-[10px] text-zinc-600" aria-label={`${lines.length} log lines`}>{lines.length} lines</span>
 
         <div className="flex-1" />
 
         {userScrolled && (
           <button
             onClick={() => scrollToBottom(true)}
-            className="flex items-center gap-1 rounded border border-zinc-700 bg-zinc-800 px-2 py-1 text-[10px] font-medium text-zinc-300 transition-colors hover:bg-zinc-700"
+            aria-label="Scroll to latest log output"
+            className="flex items-center gap-1 rounded-lg border border-zinc-700 bg-zinc-800 px-2 py-1 text-[10px] font-medium text-zinc-300 transition-colors hover:bg-zinc-700 focus-ring"
           >
-            <ChevronDown className="h-3 w-3" />
+            <ChevronDown className="h-3 w-3" aria-hidden="true" />
             Scroll to bottom
           </button>
         )}
 
         {!userScrolled && (
-          <span className="flex items-center gap-1 text-[10px] text-zinc-600">
-            <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
+          <span className="flex items-center gap-1 text-[10px] text-zinc-600" role="status">
+            <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-500 motion-reduce:animate-none" />
             Following
           </span>
         )}
@@ -404,12 +406,15 @@ function LogViewer({ agent }: { agent: AgentInfo }) {
         <div
           ref={containerRef}
           onScroll={handleScroll}
+          role="log"
+          aria-label={`Log output for ${agent.name}`}
+          aria-live="off"
           className="absolute inset-0 overflow-y-auto bg-zinc-950 p-4 font-mono text-xs leading-[1.6]"
           style={{ overflowAnchor: 'none' }}
         >
           {lines.length === 0 && (
             <div className="flex h-full items-center justify-center">
-              <p className="text-zinc-700">Waiting for output…</p>
+              <p className="text-zinc-700" role="status">Waiting for output…</p>
             </div>
           )}
           {lines.map((line, i) => (
@@ -421,9 +426,10 @@ function LogViewer({ agent }: { agent: AgentInfo }) {
         {userScrolled && (
           <button
             onClick={() => scrollToBottom(true)}
-            className="absolute bottom-4 left-1/2 z-10 flex -translate-x-1/2 items-center gap-1.5 rounded-full border border-zinc-700 bg-zinc-800/90 px-3 py-1.5 text-xs font-medium text-zinc-300 shadow-lg backdrop-blur-sm transition-colors hover:bg-zinc-700"
+            aria-label="Jump to latest log output"
+            className="absolute bottom-4 left-1/2 z-10 flex -translate-x-1/2 items-center gap-1.5 rounded-full border border-zinc-700 bg-zinc-800/90 px-3 py-1.5 text-xs font-medium text-zinc-300 shadow-lg backdrop-blur-sm transition-colors hover:bg-zinc-700 focus-ring"
           >
-            <ChevronDown className="h-3.5 w-3.5" />
+            <ChevronDown className="h-3.5 w-3.5" aria-hidden="true" />
             Jump to bottom
           </button>
         )}
@@ -449,6 +455,7 @@ function AgentDetailHeader({ agent }: { agent: AgentInfo }) {
       <div className="flex items-start gap-3">
         <div
           className={`mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border ${meta.color}`}
+          aria-hidden="true"
         >
           {meta.icon}
         </div>
@@ -474,15 +481,15 @@ function AgentDetailHeader({ agent }: { agent: AgentInfo }) {
         </div>
         <div className="shrink-0 text-right">
           <div className="flex items-center gap-1 text-xs text-zinc-500">
-            <Clock className="h-3 w-3" />
-            {elapsed}
+            <Clock className="h-3 w-3" aria-hidden="true" />
+            <time>{elapsed}</time>
           </div>
           {agent.pid > 0 && (
             <div className="mt-0.5 text-[10px] text-zinc-700">PID {agent.pid}</div>
           )}
           {agent.sessionKey && (
             <div
-              className="mt-0.5 truncate max-w-[160px] text-[10px] text-zinc-700"
+              className="mt-0.5 max-w-[160px] truncate text-[10px] text-zinc-700"
               title={agent.sessionKey}
             >
               {agent.sessionKey}
@@ -498,9 +505,9 @@ function AgentDetailHeader({ agent }: { agent: AgentInfo }) {
 
 function EmptyState({ hasAgents }: { hasAgents: boolean }) {
   return (
-    <div className="flex flex-1 flex-col items-center justify-center gap-3 text-center">
+    <div className="flex flex-1 flex-col items-center justify-center gap-3 text-center" role="status">
       <div className="flex h-16 w-16 items-center justify-center rounded-2xl border border-zinc-800 bg-zinc-900">
-        <Terminal className="h-8 w-8 text-zinc-700" />
+        <Terminal className="h-8 w-8 text-zinc-700" aria-hidden="true" />
       </div>
       <div>
         <p className="text-sm font-medium text-zinc-400">
@@ -533,22 +540,23 @@ function AgentGroup({
 }) {
   if (agents.length === 0) return null
   return (
-    <div className="mb-2">
-      <p className="mb-1 px-2 text-[10px] font-semibold uppercase tracking-widest text-zinc-600">
+    <section className="mb-2" aria-label={`${label} agents`}>
+      <h3 className="mb-1 px-2 text-[10px] font-semibold uppercase tracking-widest text-zinc-600">
         {label}
-      </p>
-      <div className="flex flex-col gap-0.5">
+      </h3>
+      <div className="flex flex-col gap-0.5" role="list">
         {agents.map((agent) => (
-          <AgentCard
-            key={agent.id}
-            agent={agent}
-            isSelected={agent.id === selectedId}
-            onSelect={() => onSelect(agent.id)}
-            now={now}
-          />
+          <div key={agent.id} role="listitem">
+            <AgentCard
+              agent={agent}
+              isSelected={agent.id === selectedId}
+              onSelect={() => onSelect(agent.id)}
+              now={now}
+            />
+          </div>
         ))}
       </div>
-    </div>
+    </section>
   )
 }
 
@@ -605,17 +613,17 @@ export default function AgentsPage() {
   return (
     <div className="flex h-dvh overflow-hidden bg-zinc-900">
       {/* ── Left panel ─────────────────────────────────────────────────── */}
-      <div className="flex w-[280px] shrink-0 flex-col overflow-hidden border-r border-zinc-800 bg-zinc-950">
+      <nav aria-label="Agent list" className="glass flex w-[280px] shrink-0 flex-col overflow-hidden border-r border-zinc-800/60">
         <SidebarNav />
-        <Separator className="shrink-0 bg-zinc-800" />
+        <Separator className="shrink-0 bg-zinc-800/60" />
 
         {/* Panel header */}
         <div className="flex shrink-0 items-center justify-between px-3 py-2.5">
           <div className="flex items-center gap-2">
-            <Bot className="h-3.5 w-3.5 text-zinc-500" />
+            <Bot className="h-3.5 w-3.5 text-zinc-500" aria-hidden="true" />
             <h2 className="text-xs font-semibold text-zinc-300">Agents</h2>
             {agents.length > 0 && (
-              <span className="rounded-full bg-zinc-800 px-1.5 py-0.5 text-[10px] text-zinc-400">
+              <span className="rounded-full bg-zinc-800 px-1.5 py-0.5 text-[10px] text-zinc-400" aria-label={`${agents.length} agents`}>
                 {agents.length}
               </span>
             )}
@@ -625,19 +633,19 @@ export default function AgentsPage() {
               setLoading(true)
               fetchAgents()
             }}
-            aria-label="Refresh"
-            className="rounded p-1 text-zinc-500 transition-colors hover:bg-zinc-800 hover:text-zinc-300"
+            aria-label="Refresh agent list"
+            className="rounded-lg p-1.5 text-zinc-500 transition-colors hover:bg-zinc-800 hover:text-zinc-300 focus-ring"
           >
-            <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />
+            <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin motion-reduce:animate-none' : ''}`} aria-hidden="true" />
           </button>
         </div>
-        <Separator className="shrink-0 bg-zinc-800" />
+        <Separator className="shrink-0 bg-zinc-800/60" />
 
         {/* Scrollable agent list */}
         <div className="min-h-0 flex-1 overflow-y-auto p-2">
           {agents.length === 0 && !loading && (
-            <div className="px-3 py-10 text-center">
-              <Terminal className="mx-auto h-8 w-8 text-zinc-800" />
+            <div className="px-3 py-10 text-center" role="status">
+              <Terminal className="mx-auto h-8 w-8 text-zinc-800" aria-hidden="true" />
               <p className="mt-3 text-xs text-zinc-600">No active agents</p>
             </div>
           )}
@@ -664,10 +672,10 @@ export default function AgentsPage() {
             now={now}
           />
         </div>
-      </div>
+      </nav>
 
       {/* ── Right panel ────────────────────────────────────────────────── */}
-      <main className="flex flex-1 flex-col overflow-hidden">
+      <main className="flex flex-1 flex-col overflow-hidden" aria-label="Agent details">
         {selectedAgent ? (
           <>
             <AgentDetailHeader agent={selectedAgent} />

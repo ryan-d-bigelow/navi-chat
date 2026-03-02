@@ -25,16 +25,17 @@ export function CodeBlock({ language, children }: CodeBlockProps) {
         <span className="text-xs text-zinc-400">{language}</span>
         <button
           onClick={handleCopy}
-          className="flex items-center gap-1 text-xs text-zinc-400 transition-colors hover:text-zinc-200"
+          aria-label={copied ? 'Copied to clipboard' : `Copy ${language} code`}
+          className="flex items-center gap-1 rounded px-1.5 py-0.5 text-xs text-zinc-400 transition-colors hover:bg-zinc-700 hover:text-zinc-200 focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-800"
         >
           {copied ? (
             <>
-              <Check className="h-3.5 w-3.5" />
+              <Check className="h-3.5 w-3.5" aria-hidden="true" />
               Copied
             </>
           ) : (
             <>
-              <Copy className="h-3.5 w-3.5" />
+              <Copy className="h-3.5 w-3.5" aria-hidden="true" />
               Copy
             </>
           )}
