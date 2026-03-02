@@ -3,12 +3,12 @@
 import { ChatInput } from '@/components/chat/chat-input'
 import { MessageList } from '@/components/chat/message-list'
 import { Sidebar } from '@/components/chat/sidebar'
+import { LinearPanel } from '@/components/linear/linear-panel'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import {
   Sheet,
   SheetContent,
   SheetTitle,
-  SheetTrigger,
 } from '@/components/ui/sheet'
 import {
   loadConversations,
@@ -22,7 +22,7 @@ import type { Conversation, ChatMessage } from '@/lib/types'
 import type { SyncEvent } from '@/lib/sse'
 import { useChat } from '@ai-sdk/react'
 import type { UIMessage } from 'ai'
-import { Menu } from 'lucide-react'
+import { LayoutList, Menu } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 function getTextContent(message: UIMessage): string {
@@ -44,6 +44,7 @@ export default function ChatPage() {
   const [conversations, setConversations] = useState<Conversation[]>([])
   const [activeId, setActiveId] = useState<string | null>(null)
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [linearOpen, setLinearOpen] = useState(true)
   const [input, setInput] = useState('')
   const scrollRef = useRef<HTMLDivElement>(null)
   const activeIdRef = useRef<string | null>(null)
@@ -309,7 +310,7 @@ export default function ChatPage() {
       </Sheet>
 
       {/* Main chat area */}
-      <div className="flex flex-1 flex-col">
+      <div className="flex flex-1 flex-col overflow-hidden">
         {/* Header */}
         <div className="flex items-center gap-3 border-b border-zinc-800 px-4 py-3">
           <button
@@ -320,6 +321,18 @@ export default function ChatPage() {
           </button>
           <span className="text-lg">🧚</span>
           <h1 className="text-sm font-medium text-zinc-200">Navi Chat</h1>
+          <div className="flex-1" />
+          <button
+            onClick={() => setLinearOpen((v) => !v)}
+            className={`rounded-lg p-1.5 transition-colors ${
+              linearOpen
+                ? 'bg-zinc-800 text-violet-400'
+                : 'text-zinc-500 hover:bg-zinc-800 hover:text-zinc-300'
+            }`}
+            title={linearOpen ? 'Hide tasks' : 'Show tasks'}
+          >
+            <LayoutList className="h-4 w-4" />
+          </button>
         </div>
 
         {/* Messages */}
@@ -348,6 +361,13 @@ export default function ChatPage() {
           />
         </div>
       </div>
+
+      {/* Linear task panel — desktop only */}
+      {linearOpen && (
+        <div className="hidden md:flex">
+          <LinearPanel onClose={() => setLinearOpen(false)} />
+        </div>
+      )}
     </div>
   )
 }
