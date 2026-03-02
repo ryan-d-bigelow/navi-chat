@@ -1,36 +1,66 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Navi Chat
+
+A private web-based chat interface for talking to Navi, built as a replacement for Slack.
+
+## Architecture
+
+```
+Browser → Next.js :3001 → POST /api/chat → OpenClaw (127.0.0.1:18789) → Navi
+```
+
+- **Next.js 15** (App Router) with Turbopack
+- **Vercel AI SDK** (`useChat` hook) for streaming
+- **shadcn/ui** components (Button, ScrollArea, Textarea, Sheet, Avatar, etc.)
+- **Tailwind CSS** with dark-first design
+- **react-markdown** + **react-syntax-highlighter** for rich message rendering
+- **localStorage** for conversation history
 
 ## Getting Started
 
-First, run the development server:
-
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+# Install dependencies
+bun install
+
+# Set up environment
+cp .env.example .env.local
+# Edit .env.local with your OpenClaw URL and token
+
+# Run development server
+bun run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Opens at [http://localhost:3001](http://localhost:3001).
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Project Structure
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```
+app/
+  page.tsx              → redirects to /chat
+  chat/
+    page.tsx            → main chat UI
+    layout.tsx          → chat layout wrapper
+  api/chat/route.ts     → streaming proxy to OpenClaw
+components/
+  chat/
+    message-list.tsx    → renders message list
+    message-item.tsx    → single message (extensible renderer)
+    chat-input.tsx      → textarea + send button
+    sidebar.tsx         → conversation list
+    renderers/
+      text-message.tsx  → markdown text renderer
+      code-block.tsx    → syntax-highlighted code blocks
+  ui/                   → shadcn components
+lib/
+  storage.ts            → localStorage helpers
+  types.ts              → shared types
+```
 
-## Learn More
+## Features
 
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- Streaming chat with real-time token display
+- Markdown rendering with GFM support
+- Syntax-highlighted code blocks with copy button
+- Conversation history (localStorage)
+- Mobile-responsive with slide-out sidebar
+- Dark mode (default, respects system preference)
+- Extensible message renderer (type-based dispatch)
