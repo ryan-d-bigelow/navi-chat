@@ -1,5 +1,6 @@
 import { createReadStream } from 'fs'
-import { existsSync, statSync } from 'fs'
+import { existsSync, statSync, readdirSync } from 'fs'
+import { execSync } from 'child_process'
 import { homedir } from 'os'
 import path from 'path'
 import { spawn } from 'child_process'
@@ -308,19 +309,34 @@ export async function GET(
 
       // ── Strategy 1: OpenClaw session (UUID) ──────────────────────────────
       // Look for the per-session JSONL in ~/.openclaw/agents/main/sessions/
+      // OpenClaw sometimes appends -topic-<timestamp> to session filenames.
       if (id.length === 36 && !id.startsWith('proc-')) {
         const sessionsDir = path.join(homedir(), '.openclaw/agents/main/sessions')
-        const sessionFile = path.join(sessionsDir, `${id}.jsonl`)
+
+        // Try exact match first, then glob for -topic-* suffix variants
+        let sessionFile = path.join(sessionsDir, `${id}.jsonl`)
+        if (!existsSync(sessionFile)) {
+          try {
+            const matches = readdirSync(sessionsDir).filter(
+              (f) => f.startsWith(id) && f.endsWith('.jsonl'),
+            )
+            if (matches.length > 0) {
+              sessionFile = path.join(sessionsDir, matches[0])
+            }
+          } catch {
+            // readdirSync failed — fall through to not-found case
+          }
+        }
 
         if (existsSync(sessionFile)) {
           streamSessionFile(controller, encoder, sessionFile)
           return
         }
 
-        // Session file not found — could be a deleted/pruned session
+        // Session file not found — send error but keep stream open (avoids SSE reconnect loop)
         const msg: LogLine = {
           type: 'error',
-          content: `No session log found for ${id}. The session may have been pruned.`,
+          content: `No session log found for ${id}. The session may have been pruned or never written to disk.`,
           timestamp: Date.now(),
         }
         try {
@@ -328,6 +344,11 @@ export async function GET(
         } catch {
           // ignore
         }
+        // Keep stream alive with a heartbeat so the client doesn't spam-reconnect
+        const keepalive1 = setInterval(() => {
+          try { controller.enqueue(encoder.encode(': keepalive\n\n')) } catch { clearInterval(keepalive1) }
+        }, 15000)
+        ;(controller as unknown as Record<string, () => void>).__cleanup = () => clearInterval(keepalive1)
         return
       }
 
@@ -343,10 +364,41 @@ export async function GET(
           return
         }
 
-        // No per-process log — inform the user rather than showing gateway.log
+        // Check navi_ops DB for ticket associated with this PID → try /tmp/nav-{N}-agent.log
+        try {
+          const dbPath = path.join(homedir(), '.openclaw/workspace/data/navi.db')
+          if (existsSync(dbPath)) {
+            const taskId = execSync(
+              `sqlite3 "${dbPath}" "SELECT task_id FROM navi_ops WHERE pid=${parseInt(pid, 10)} LIMIT 1;"`,
+              { encoding: 'utf-8', timeout: 3000 },
+            ).trim()
+            if (taskId) {
+              // NAV-53 → 53, untracked:97365 → skip
+              const numMatch = taskId.match(/NAV-(\d+)/i)
+              if (numMatch) {
+                const ticketNum = numMatch[1]
+                const candidates = [
+                  `/tmp/nav-${ticketNum}-agent.log`,
+                  `/tmp/nav-nav-${ticketNum}-agent.log`,
+                  `/tmp/${taskId.toLowerCase()}-agent.log`,
+                ]
+                for (const candidate of candidates) {
+                  if (existsSync(candidate)) {
+                    tailLogFile(controller, encoder, candidate, taskId)
+                    return
+                  }
+                }
+              }
+            }
+          }
+        } catch {
+          // DB lookup failed — fall through to info message
+        }
+
+        // No per-process log found — inform user; keep stream open to avoid reconnect loop
         const info: LogLine = {
           type: 'system',
-          content: `Process PID ${pid} — no dedicated log file found. Output may be in a terminal session.`,
+          content: `Process PID ${pid} — agent is running but output is not captured to a log file.\nFuture agents will be spawned with log redirection. For now, check the terminal session or navi_ops DB.`,
           timestamp: Date.now(),
         }
         try {
@@ -354,6 +406,11 @@ export async function GET(
         } catch {
           // ignore
         }
+        // Keep stream alive so the SSE client doesn't spam-reconnect
+        const keepalive2 = setInterval(() => {
+          try { controller.enqueue(encoder.encode(': keepalive\n\n')) } catch { clearInterval(keepalive2) }
+        }, 15000)
+        ;(controller as unknown as Record<string, () => void>).__cleanup = () => clearInterval(keepalive2)
         return
       }
 
