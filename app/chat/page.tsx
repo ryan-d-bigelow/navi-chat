@@ -50,8 +50,11 @@ export default function ChatPage() {
 
   const activeConversation = conversations.find((c) => c.id === activeId)
 
-  const { messages, sendMessage, status, setMessages } = useChat({
+  const { messages, sendMessage, status, setMessages, error } = useChat({
     messages: activeConversation ? toUIMessages(activeConversation.messages) : [],
+    onError: (err) => {
+      console.error('[navi-chat] useChat error:', err)
+    },
     onFinish: ({ message }) => {
       const content = getTextContent(message)
       setConversations((prev) => {
@@ -228,6 +231,15 @@ export default function ChatPage() {
             <MessageList messages={messages} isLoading={isStreaming} />
           </div>
         </ScrollArea>
+
+        {/* Error display */}
+        {error && (
+          <div className="mx-auto w-full max-w-3xl px-4 py-2">
+            <div className="rounded-lg border border-red-800 bg-red-950 px-3 py-2 text-xs text-red-300">
+              Error: {error.message}
+            </div>
+          </div>
+        )}
 
         {/* Input */}
         <div className="mx-auto w-full max-w-3xl px-4 pb-4 pt-2">
