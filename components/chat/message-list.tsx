@@ -1,15 +1,37 @@
 'use client'
 
+import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import type { UIMessage } from 'ai'
 import { MessageItem } from './message-item'
 
 interface MessageListProps {
   messages: UIMessage[]
   isLoading: boolean
+  isThinking: boolean
 }
 
-export function MessageList({ messages, isLoading }: MessageListProps) {
-  if (messages.length === 0) {
+function ThinkingBubble() {
+  return (
+    <article aria-label="Navi is thinking" className="animate-fade-in">
+      <div className="flex gap-3">
+        <Avatar className="h-7 w-7 shrink-0" aria-hidden="true">
+          <AvatarFallback className="bg-transparent text-base">
+            <span role="img" aria-label="Navi">🧚</span>
+          </AvatarFallback>
+        </Avatar>
+        <div className="flex items-center gap-1 pt-1.5">
+          <span className="h-2 w-2 animate-bounce rounded-full bg-zinc-500 [animation-delay:0ms]" />
+          <span className="h-2 w-2 animate-bounce rounded-full bg-zinc-500 [animation-delay:150ms]" />
+          <span className="h-2 w-2 animate-bounce rounded-full bg-zinc-500 [animation-delay:300ms]" />
+          <span className="sr-only">Navi is thinking...</span>
+        </div>
+      </div>
+    </article>
+  )
+}
+
+export function MessageList({ messages, isLoading, isThinking }: MessageListProps) {
+  if (messages.length === 0 && !isThinking) {
     return (
       <div
         className="flex h-[60vh] flex-col items-center justify-center text-center"
@@ -41,6 +63,7 @@ export function MessageList({ messages, isLoading }: MessageListProps) {
           }
         />
       ))}
+      {isThinking && <ThinkingBubble />}
       {isLoading && (
         <div role="status" aria-live="assertive" className="sr-only">
           Navi is responding...

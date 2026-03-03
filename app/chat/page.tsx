@@ -257,6 +257,7 @@ export default function ChatPage() {
   })
 
   const isStreaming = status === 'streaming' || status === 'submitted'
+  const isThinking = status === 'submitted'
 
   // When not actively streaming via useChat (e.g. after navigating away and
   // back), show accumulated SSE tokens as a placeholder assistant message so
@@ -506,7 +507,7 @@ export default function ChatPage() {
         {/* Messages */}
         <ScrollArea className="min-h-0 flex-1" viewportRef={scrollRef}>
           <div className="mx-auto max-w-3xl px-4 py-6 sm:px-6">
-            <MessageList messages={displayMessages} isLoading={isStreaming || isPendingStream} />
+            <MessageList messages={displayMessages} isLoading={isStreaming || isPendingStream} isThinking={isThinking} />
           </div>
         </ScrollArea>
 

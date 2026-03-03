@@ -2,7 +2,7 @@
 
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
-import { SendHorizonal } from 'lucide-react'
+import { Loader2, SendHorizonal } from 'lucide-react'
 import { useCallback, useRef, type KeyboardEvent, useEffect } from 'react'
 
 interface ChatInputProps {
@@ -77,7 +77,11 @@ export function ChatInput({
         aria-label={isLoading ? 'Sending message...' : 'Send message'}
         className="min-h-11 min-w-11 shrink-0 rounded-xl bg-zinc-600 transition-all hover:bg-zinc-500 focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-800 disabled:opacity-40"
       >
-        <SendHorizonal className="h-4 w-4" aria-hidden="true" />
+        {isLoading ? (
+          <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+        ) : (
+          <SendHorizonal className="h-4 w-4" aria-hidden="true" />
+        )}
       </Button>
     </form>
   )
