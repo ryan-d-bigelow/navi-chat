@@ -1,10 +1,12 @@
 'use client'
 
-import { useRef, useState, useCallback, useEffect } from 'react'
+import { useRef, useState, useCallback, useEffect, useMemo } from 'react'
+import { useRouter } from 'next/navigation'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import type { LinearIssue } from '@/lib/linear-types'
 import { PRIORITY_CONFIG } from '@/lib/linear-types'
-import { ExternalLink, RefreshCw, X } from 'lucide-react'
+import type { AgentInfo } from '@/lib/agents'
+import { ExternalLink, FileText, RefreshCw, Terminal, X } from 'lucide-react'
 
 function TickerTitle({ title }: { title: string }) {
   const containerRef = useRef<HTMLSpanElement>(null)
@@ -57,6 +59,7 @@ function TickerTitle({ title }: { title: string }) {
 const REFRESH_INTERVAL = 60_000
 
 const HOME_LABELS = ['home', 'home assistant', 'honey-do']
+const BLOCKED_STATE_ID = '153e998a-f390-4dc6-8b51-1ecadff78cbb'
 
 function isHomeIssue(issue: LinearIssue): boolean {
   return issue.labels.nodes.some((l) =>
@@ -75,8 +78,25 @@ type StateGroup = {
   muted?: boolean
 }
 
+type NaviOp = {
+  ticketId: string | null
+  issueId: string | null
+  pid: number
+  phase: string
+  startedAt: number | null
+  projectName: string | null
+  taskType: string
+  title: string | null
+  logPath: string | null
+}
+
+function isBlockedIssue(issue: LinearIssue): boolean {
+  return issue.state.id === BLOCKED_STATE_ID
+}
+
 function groupIssues(issues: LinearIssue[]): StateGroup[] {
   const order: StateGroup[] = [
+    { label: 'Blocked', type: 'blocked', issues: [] },
     { label: 'In Progress', type: 'started', issues: [] },
     { label: 'Todo', type: 'unstarted', issues: [] },
     { label: 'Backlog', type: 'backlog', issues: [] },
@@ -86,9 +106,13 @@ function groupIssues(issues: LinearIssue[]): StateGroup[] {
   ]
 
   for (const issue of issues) {
+    if (isBlockedIssue(issue)) {
+      order[0].issues.push(issue)
+      continue
+    }
     const group = order.find((g) => g.type === issue.state.type)
     if (group) group.issues.push(issue)
-    else order[1].issues.push(issue) // fallback to Todo
+    else order[2].issues.push(issue) // fallback to Todo
   }
 
   return order.filter((g) => g.issues.length > 0)
@@ -129,15 +153,30 @@ function LabelPill({ name, color }: { name: string; color: string }) {
   )
 }
 
-function IssueCard({ issue }: { issue: LinearIssue }) {
+function IssueCard({
+  issue,
+  runningAgent,
+  onAgentClick,
+}: {
+  issue: LinearIssue
+  runningAgent?: AgentInfo
+  onAgentClick?: (agentId: string) => void
+}) {
+  const blocked = isBlockedIssue(issue)
   return (
-    <a
-      href={issue.url}
-      target="_blank"
-      rel="noopener noreferrer"
-      aria-label={`${issue.identifier}: ${issue.title}`}
-      className="group flex min-h-[44px] items-start gap-2.5 rounded-lg px-2 py-2 transition-colors hover:bg-zinc-800/60 focus-ring"
-    >
+    <div className="group relative flex min-h-[44px] items-start gap-2.5 rounded-lg px-2 py-2 transition-colors hover:bg-zinc-800/60">
+      {/* Pulsing running dot — top-right corner */}
+      {runningAgent && (
+        <span
+          className="absolute right-1.5 top-1.5 flex h-2 w-2"
+          role="img"
+          aria-label="Agent running"
+        >
+          <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75 motion-reduce:animate-none" />
+          <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-400" />
+        </span>
+      )}
+
       <div className="mt-1.5 shrink-0">
         <PriorityDot priority={issue.priority} />
       </div>
@@ -146,6 +185,11 @@ function IssueCard({ issue }: { issue: LinearIssue }) {
           <span className="shrink-0 font-mono text-[11px] text-zinc-400">
             {issue.identifier}
           </span>
+          {blocked && (
+            <span className="rounded-full border border-rose-500/30 bg-rose-500/10 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-rose-300">
+              Blocked
+            </span>
+          )}
           <TickerTitle title={issue.title} />
         </div>
         {issue.labels.nodes.length > 0 && (
@@ -156,11 +200,30 @@ function IssueCard({ issue }: { issue: LinearIssue }) {
           </div>
         )}
       </div>
-      <ExternalLink
-        className="mt-1 h-3.5 w-3.5 shrink-0 text-zinc-600 opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100"
-        aria-hidden="true"
-      />
-    </a>
+      <div className="flex shrink-0 items-center gap-0.5">
+        {runningAgent && onAgentClick && (
+          <button
+            onClick={(e) => {
+              e.stopPropagation()
+              onAgentClick(runningAgent.id)
+            }}
+            aria-label={`View agent for ${issue.identifier}`}
+            className="flex min-h-[44px] min-w-[44px] items-center justify-center rounded-lg text-zinc-500 transition-colors hover:text-emerald-400 focus-ring"
+          >
+            <Terminal className="h-3.5 w-3.5" aria-hidden="true" />
+          </button>
+        )}
+        <a
+          href={issue.url}
+          target="_blank"
+          rel="noopener noreferrer"
+          aria-label={`Open ${issue.identifier} in Linear`}
+          className="flex min-h-[44px] min-w-[44px] items-center justify-center rounded-lg text-zinc-600 opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100 focus-ring"
+        >
+          <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
+        </a>
+      </div>
+    </div>
   )
 }
 
@@ -174,6 +237,58 @@ function SectionHeader({ label, count, muted }: { label: string; count: number; 
         {count}
       </span>
       <div className="h-px flex-1 bg-zinc-800" aria-hidden="true" />
+    </div>
+  )
+}
+
+function formatElapsed(startedAt: number | null, now: number): string {
+  if (!startedAt) return '—'
+  const ms = Math.max(0, now - startedAt)
+  const seconds = Math.floor(ms / 1000)
+  if (seconds < 60) return `${seconds}s`
+  const minutes = Math.floor(seconds / 60)
+  if (minutes < 60) return `${minutes}m ${seconds % 60}s`
+  const hours = Math.floor(minutes / 60)
+  return `${hours}h ${minutes % 60}m`
+}
+
+function ActiveAgentCard({ op, now }: { op: NaviOp; now: number }) {
+  const ticket = op.ticketId ?? op.issueId ?? 'Untracked'
+  const agentLabel = op.projectName ?? op.title ?? 'Agent'
+  const typeLabel = op.taskType ? op.taskType.replace(/_/g, ' ') : 'agent'
+  const elapsed = formatElapsed(op.startedAt, now)
+
+  return (
+    <div className="flex flex-col gap-2 rounded-lg border border-emerald-500/15 bg-emerald-500/5 px-2.5 py-2 text-xs text-zinc-400">
+      <div className="flex items-center gap-2">
+        <span className="rounded-full bg-zinc-900 px-2 py-0.5 font-mono text-[11px] text-emerald-300">
+          {ticket}
+        </span>
+        <span className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-300">
+          {op.phase}
+        </span>
+        <span className="ml-auto text-[10px] text-emerald-200/80">{elapsed}</span>
+      </div>
+      <div className="flex items-center gap-2 text-[11px] text-zinc-300">
+        <span className="rounded-full border border-zinc-700/60 bg-zinc-900/60 px-2 py-0.5 uppercase tracking-wide text-[9px] text-zinc-400">
+          {typeLabel}
+        </span>
+        <span className="truncate">{agentLabel}</span>
+      </div>
+      <div className="flex items-center gap-2 text-[10px] text-zinc-500">
+        <span>PID {op.pid}</span>
+        {op.logPath ? (
+          <a
+            href={`file://${op.logPath}`}
+            className="inline-flex min-h-[28px] items-center gap-1 rounded-md border border-zinc-800 bg-zinc-900/60 px-2 py-1 text-[10px] text-emerald-200 transition-colors hover:border-emerald-500/40 hover:text-emerald-100 focus-ring"
+          >
+            <FileText className="h-3 w-3" aria-hidden="true" />
+            Log
+          </a>
+        ) : (
+          <span className="text-zinc-600">Log unavailable</span>
+        )}
+      </div>
     </div>
   )
 }
@@ -195,11 +310,15 @@ function SkeletonCard() {
 
 export function LinearPanel({ onClose }: LinearPanelProps) {
   const [issues, setIssues] = useState<LinearIssue[]>([])
+  const [agents, setAgents] = useState<AgentInfo[]>([])
+  const [ops, setOps] = useState<NaviOp[]>([])
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
+  const [now, setNow] = useState(() => Date.now())
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const router = useRouter()
 
   const fetchIssues = useCallback(async (silent = false) => {
     if (silent) setRefreshing(true)
@@ -207,13 +326,27 @@ export function LinearPanel({ onClose }: LinearPanelProps) {
     setError(null)
 
     try {
-      const res = await fetch('/api/linear', { cache: 'no-store' })
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}))
-        throw new Error((body as { error?: string }).error ?? `HTTP ${res.status}`)
+      const [linearRes, agentsRes, opsRes] = await Promise.all([
+        fetch('/api/linear', { cache: 'no-store' }),
+        fetch('/api/agents', { cache: 'no-store' }),
+        fetch('/api/ops', { cache: 'no-store' }),
+      ])
+      if (!linearRes.ok) {
+        const body = await linearRes.json().catch(() => ({}))
+        throw new Error((body as { error?: string }).error ?? `HTTP ${linearRes.status}`)
       }
-      const data: LinearIssue[] = await res.json()
+      const data: LinearIssue[] = await linearRes.json()
       setIssues(data)
+      if (agentsRes.ok) {
+        const agentData: AgentInfo[] = await agentsRes.json()
+        setAgents(agentData)
+      }
+      if (opsRes.ok) {
+        const opData: NaviOp[] = await opsRes.json()
+        setOps(opData)
+      } else {
+        setOps([])
+      }
       setLastUpdated(new Date())
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load tasks')
@@ -231,10 +364,32 @@ export function LinearPanel({ onClose }: LinearPanelProps) {
     }
   }, [fetchIssues])
 
+  useEffect(() => {
+    const tick = setInterval(() => setNow(Date.now()), 10_000)
+    return () => clearInterval(tick)
+  }, [])
+
   const workIssues = issues.filter((i) => !isHomeIssue(i))
   const homeIssues = issues.filter(isHomeIssue)
   const workGroups = groupIssues(workIssues)
   const homeGroups = groupIssues(homeIssues)
+
+  const runningAgentByTicket = useMemo(() => {
+    const map = new Map<string, AgentInfo>()
+    for (const agent of agents) {
+      if (agent.status === 'running' && agent.ticket?.id) {
+        map.set(agent.ticket.id, agent)
+      }
+    }
+    return map
+  }, [agents])
+
+  const handleAgentClick = useCallback(
+    (agentId: string) => {
+      router.push(`/agents?agentId=${agentId}`)
+    },
+    [router],
+  )
 
   return (
     <aside
@@ -276,6 +431,17 @@ export function LinearPanel({ onClose }: LinearPanelProps) {
 
       {/* Body */}
       <ScrollArea className="flex-1">
+        {!loading && !error && ops.length > 0 && (
+          <section aria-label="Active agents" className="border-b border-zinc-800/60 px-3 py-3">
+            <SectionHeader label="Active Agents" count={ops.length} />
+            <div className="mt-2 space-y-2">
+              {ops.map((op) => (
+                <ActiveAgentCard key={`${op.ticketId ?? 'untracked'}-${op.pid}`} op={op} now={now} />
+              ))}
+            </div>
+          </section>
+        )}
+
         {loading && (
           <div className="space-y-1 pt-2" role="status" aria-label="Loading tasks">
             <span className="sr-only">Loading tasks...</span>
@@ -311,7 +477,12 @@ export function LinearPanel({ onClose }: LinearPanelProps) {
                 <SectionHeader label={group.label} count={group.issues.length} muted={group.muted} />
                 <div className="mb-2 px-1">
                   {group.issues.map((issue) => (
-                    <IssueCard key={issue.id} issue={issue} />
+                    <IssueCard
+                      key={issue.id}
+                      issue={issue}
+                      runningAgent={['started', 'blocked'].includes(group.type) ? runningAgentByTicket.get(issue.identifier) : undefined}
+                      onAgentClick={['started', 'blocked'].includes(group.type) ? handleAgentClick : undefined}
+                    />
                   ))}
                 </div>
               </section>
@@ -331,7 +502,12 @@ export function LinearPanel({ onClose }: LinearPanelProps) {
                     <SectionHeader label={group.label} count={group.issues.length} muted={group.muted} />
                     <div className="mb-2 px-1">
                       {group.issues.map((issue) => (
-                        <IssueCard key={issue.id} issue={issue} />
+                        <IssueCard
+                          key={issue.id}
+                          issue={issue}
+                          runningAgent={['started', 'blocked'].includes(group.type) ? runningAgentByTicket.get(issue.identifier) : undefined}
+                          onAgentClick={['started', 'blocked'].includes(group.type) ? handleAgentClick : undefined}
+                        />
                       ))}
                     </div>
                   </section>

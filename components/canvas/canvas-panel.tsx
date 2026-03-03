@@ -155,7 +155,10 @@ export function CanvasPanel({ canvas, onClose, isStreaming }: CanvasPanelProps) 
           <div className="flex h-4 w-4 shrink-0 items-center justify-center rounded bg-emerald-600">
             <span className="text-[8px] font-bold leading-none text-white">C</span>
           </div>
-          <span className="text-sm font-semibold text-zinc-200">{canvas.title}</span>
+          <div className="flex flex-col">
+            <span className="text-sm font-semibold text-zinc-200">{canvas.title}</span>
+            <span className="text-[10px] text-zinc-500">AI-controlled · persistent view</span>
+          </div>
           {isStreaming && (
             <span
               className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-400"
@@ -191,9 +194,10 @@ export function CanvasPanel({ canvas, onClose, isStreaming }: CanvasPanelProps) 
           <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-xl bg-zinc-800/50">
             <span className="text-2xl">🎨</span>
           </div>
-          <p className="text-sm text-zinc-500">Canvas is empty</p>
+          <p className="text-sm text-zinc-500">Canvas panel</p>
           <p className="mt-1 text-xs text-zinc-600">
-            Navi will push content here during responses
+            The canvas panel is controlled by Navi — it opens automatically when Navi has structured content
+            to show (charts, tables, URLs, plans). Use the button above to toggle it.
           </p>
         </div>
       )}

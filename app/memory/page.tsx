@@ -200,7 +200,7 @@ export default function MemoryPage() {
   }, [fetchMemory])
 
   return (
-    <main className="min-h-dvh bg-zinc-950 pb-20 text-zinc-100 md:pb-0">
+    <main className="h-dvh overflow-y-auto bg-zinc-950 pb-20 text-zinc-100 md:pb-0">
       <div className="mx-auto flex max-w-3xl flex-col gap-4 px-4 py-8 sm:px-6 sm:py-10">
         {/* Header */}
         <div className="flex items-center gap-3">

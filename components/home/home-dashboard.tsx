@@ -138,7 +138,7 @@ export function HomeDashboard() {
   const agentsReady = agents.state.status === 'ready'
 
   return (
-    <div className="min-h-dvh overflow-x-hidden overflow-y-auto bg-zinc-950 text-zinc-100">
+    <div className="h-dvh overflow-x-hidden overflow-y-auto bg-zinc-950 text-zinc-100">
       <div className="mx-auto flex w-full flex-col gap-6 px-4 pb-24 pt-6 sm:gap-8 sm:px-6 sm:py-10 md:pb-14 md:pt-14">
         <header className="flex flex-col gap-6">
           <div className="flex flex-wrap items-start justify-between gap-4 sm:gap-6">

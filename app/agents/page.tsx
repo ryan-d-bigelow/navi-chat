@@ -566,31 +566,57 @@ function AgentGroup({
   selectedId,
   onSelect,
   now,
+  collapsible = false,
+  defaultCollapsed = false,
 }: {
   label: string
   agents: AgentInfo[]
   selectedId: string | null
   onSelect: (id: string) => void
   now: number
+  collapsible?: boolean
+  defaultCollapsed?: boolean
 }) {
+  const hasSelected = agents.some((a) => a.id === selectedId)
+  const [collapsed, setCollapsed] = useState(defaultCollapsed && !hasSelected)
+
   if (agents.length === 0) return null
   return (
     <section className="mb-2" aria-label={`${label} agents`}>
-      <h3 className="mb-1 px-2 text-[10px] font-semibold uppercase tracking-widest text-zinc-600">
-        {label}
-      </h3>
-      <div className="flex flex-col gap-0.5" role="list">
-        {agents.map((agent) => (
-          <div key={agent.id} role="listitem">
-            <AgentCard
-              agent={agent}
-              isSelected={agent.id === selectedId}
-              onSelect={() => onSelect(agent.id)}
-              now={now}
-            />
-          </div>
-        ))}
-      </div>
+      {collapsible ? (
+        <button
+          onClick={() => setCollapsed((c) => !c)}
+          aria-expanded={!collapsed}
+          className="mb-1 flex w-full items-center gap-1.5 rounded px-2 py-0.5 text-[10px] font-semibold uppercase tracking-widest text-zinc-600 transition-colors hover:text-zinc-400 focus-ring"
+        >
+          <ChevronDown
+            className={`h-3 w-3 shrink-0 transition-transform duration-200 ${collapsed ? '-rotate-90' : ''}`}
+            aria-hidden="true"
+          />
+          {label}
+          <span className="ml-auto font-normal normal-case tracking-normal text-zinc-700">
+            {agents.length}
+          </span>
+        </button>
+      ) : (
+        <h3 className="mb-1 px-2 text-[10px] font-semibold uppercase tracking-widest text-zinc-600">
+          {label}
+        </h3>
+      )}
+      {!collapsed && (
+        <div className="flex flex-col gap-0.5" role="list">
+          {agents.map((agent) => (
+            <div key={agent.id} role="listitem">
+              <AgentCard
+                agent={agent}
+                isSelected={agent.id === selectedId}
+                onSelect={() => onSelect(agent.id)}
+                now={now}
+              />
+            </div>
+          ))}
+        </div>
+      )}
     </section>
   )
 }
@@ -749,6 +775,8 @@ function AgentsPageInner() {
             selectedId={selectedId}
             onSelect={setSelectedId}
             now={now}
+            collapsible
+            defaultCollapsed
           />
           <AgentGroup
             label="Done"
@@ -756,6 +784,8 @@ function AgentsPageInner() {
             selectedId={selectedId}
             onSelect={setSelectedId}
             now={now}
+            collapsible
+            defaultCollapsed
           />
         </div>
       </nav>

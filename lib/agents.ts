@@ -148,11 +148,28 @@ function parseOpenClawSessions(): AgentInfo[] {
   try {
     const raw = readFileSync(SESSIONS_PATH, 'utf-8')
     const sessions: SessionsJson = JSON.parse(raw)
+    const uniqueSessions = new Map<string, { key: string; session: SessionEntry }>()
     const agents: AgentInfo[] = []
     const now = Date.now()
     const THIRTY_MIN_MS = 30 * 60 * 1000
 
     for (const [key, session] of Object.entries(sessions)) {
+      const existing = uniqueSessions.get(session.sessionId)
+      if (existing) {
+        const existingUpdated = existing.session.updatedAt ?? 0
+        const nextUpdated = session.updatedAt ?? 0
+        if (
+          nextUpdated > existingUpdated ||
+          (nextUpdated === existingUpdated && key.length > existing.key.length)
+        ) {
+          uniqueSessions.set(session.sessionId, { key, session })
+        }
+      } else {
+        uniqueSessions.set(session.sessionId, { key, session })
+      }
+    }
+
+    for (const { key, session } of uniqueSessions.values()) {
       const age = now - (session.updatedAt ?? 0)
       const { agentType, name } = classifySession(key)
       const task = extractTask(key, session)

@@ -17,6 +17,7 @@ import {
   Search,
   Terminal,
   Trash2,
+  ChevronRight,
   X,
 } from 'lucide-react'
 import Link from 'next/link'
@@ -45,6 +46,8 @@ const DATE_GROUP_ORDER = [
 ] as const
 
 type DateGroup = (typeof DATE_GROUP_ORDER)[number]
+
+const SIDEBAR_GROUP_STATE_KEY = 'navi.sidebar.groupState'
 
 function getDateGroup(timestamp: number): DateGroup {
   const now = new Date()
@@ -116,6 +119,7 @@ interface SidebarProps {
   onNew: () => void
   onDelete: (id: string) => void
   onRename: (id: string, title: string) => void
+  liveAgentSessions: Set<string>
 }
 
 export function Sidebar({
@@ -125,6 +129,7 @@ export function Sidebar({
   onNew,
   onDelete,
   onRename,
+  liveAgentSessions,
 }: SidebarProps) {
   const [search, setSearch] = useState('')
   const [pendingDeleteIds, setPendingDeleteIds] = useState<Set<string>>(
@@ -132,6 +137,15 @@ export function Sidebar({
   )
   const [editingId, setEditingId] = useState<string | null>(null)
   const [focusedIndex, setFocusedIndex] = useState(-1)
+  const [expandedGroups, setExpandedGroups] = useState<
+    Record<DateGroup, boolean>
+  >(() => ({
+    Today: true,
+    Yesterday: false,
+    'Previous 7 days': false,
+    'Previous 30 days': false,
+    Older: false,
+  }))
 
   // Filter & group
   const filtered = useMemo(() => {
@@ -154,6 +168,30 @@ export function Sidebar({
   useEffect(() => {
     setFocusedIndex(-1)
   }, [search, conversations.length])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const raw = window.localStorage.getItem(SIDEBAR_GROUP_STATE_KEY)
+    if (!raw) return
+    try {
+      const parsed = JSON.parse(raw) as Partial<Record<DateGroup, boolean>>
+      setExpandedGroups((prev) => ({
+        ...prev,
+        ...parsed,
+        Today: true,
+      }))
+    } catch {
+      // Ignore invalid localStorage payloads.
+    }
+  }, [])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    window.localStorage.setItem(
+      SIDEBAR_GROUP_STATE_KEY,
+      JSON.stringify(expandedGroups)
+    )
+  }, [expandedGroups])
 
   const handleDeleteRequest = useCallback(
     (id: string, title: string) => {
@@ -233,6 +271,14 @@ export function Sidebar({
     }
   }
 
+  const toggleGroup = useCallback((label: DateGroup) => {
+    if (label === 'Today') return
+    setExpandedGroups((prev) => ({
+      ...prev,
+      [label]: !prev[label],
+    }))
+  }, [])
+
   return (
     <nav
       aria-label="Conversations"
@@ -257,7 +303,7 @@ export function Sidebar({
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search chats\u2026"
+            placeholder="Search chats…"
             aria-label="Filter conversations"
             className="h-11 w-full rounded-md border border-zinc-700/60 bg-zinc-800/60 pl-10 pr-10 text-sm text-zinc-300 placeholder:text-zinc-500 transition-colors focus:border-zinc-600 focus:outline-none focus:ring-1 focus:ring-zinc-500 md:h-8 md:pl-8 md:pr-8 md:text-xs"
           />
@@ -287,39 +333,74 @@ export function Sidebar({
           >
             {groups.map((group) => (
               <li key={group.label} role="presentation">
-                <p className="mb-1 mt-3 px-3 text-[11px] font-semibold uppercase tracking-wider text-zinc-500">
-                  {group.label}
-                </p>
-                <ul role="group" aria-label={group.label}>
-                  {group.items.map((conv) => {
-                    const flatIdx = flatList.indexOf(conv)
-                    return (
-                      <li
-                        key={conv.id}
-                        role="option"
-                        aria-selected={conv.id === activeId}
-                        className="animate-slide-in-left"
-                      >
-                        <ConversationItem
-                          conversation={conv}
-                          isActive={conv.id === activeId}
-                          isFocused={flatIdx === focusedIndex}
-                          isEditing={conv.id === editingId}
-                          onSelect={() => onSelect(conv.id)}
-                          onDelete={() =>
-                            handleDeleteRequest(conv.id, conv.title)
-                          }
-                          onStartRename={() => setEditingId(conv.id)}
-                          onRename={(title) => {
-                            setEditingId(null)
-                            onRename(conv.id, title)
-                          }}
-                          onCancelRename={() => setEditingId(null)}
-                        />
-                      </li>
-                    )
-                  })}
-                </ul>
+                <div className="mb-1 mt-3 flex items-center justify-between px-3 text-[11px] font-semibold uppercase tracking-wider text-zinc-500">
+                  <span>{group.label}</span>
+                  {group.label !== 'Today' && (
+                    <button
+                      type="button"
+                      onClick={() => toggleGroup(group.label)}
+                      aria-label={`Toggle ${group.label} conversations`}
+                      aria-expanded={!!expandedGroups[group.label]}
+                      className="flex h-5 w-5 items-center justify-center rounded text-zinc-400 transition-colors hover:text-zinc-200 focus-ring"
+                    >
+                      <ChevronRight
+                        className={`h-3.5 w-3.5 transition-transform ${
+                          expandedGroups[group.label] ? 'rotate-90' : ''
+                        }`}
+                        aria-hidden="true"
+                      />
+                    </button>
+                  )}
+                </div>
+                <div
+                  className="grid transition-[grid-template-rows] duration-200 ease-out"
+                  style={{
+                    gridTemplateRows:
+                      group.label === 'Today' || expandedGroups[group.label]
+                        ? '1fr'
+                        : '0fr',
+                  }}
+                >
+                  <div
+                    className={`overflow-hidden transition-opacity duration-200 ${
+                      group.label === 'Today' || expandedGroups[group.label]
+                        ? 'opacity-100'
+                        : 'opacity-0'
+                    }`}
+                  >
+                    <ul role="group" aria-label={group.label}>
+                      {group.items.map((conv) => {
+                        const flatIdx = flatList.indexOf(conv)
+                        return (
+                          <li
+                            key={conv.id}
+                            role="option"
+                            aria-selected={conv.id === activeId}
+                            className="animate-slide-in-left"
+                          >
+                            <ConversationItem
+                              conversation={conv}
+                              isActive={conv.id === activeId}
+                              isFocused={flatIdx === focusedIndex}
+                              isEditing={conv.id === editingId}
+                              liveAgentSessions={liveAgentSessions}
+                              onSelect={() => onSelect(conv.id)}
+                              onDelete={() =>
+                                handleDeleteRequest(conv.id, conv.title)
+                              }
+                              onStartRename={() => setEditingId(conv.id)}
+                              onRename={(title) => {
+                                setEditingId(null)
+                                onRename(conv.id, title)
+                              }}
+                              onCancelRename={() => setEditingId(null)}
+                            />
+                          </li>
+                        )
+                      })}
+                    </ul>
+                  </div>
+                </div>
               </li>
             ))}
           </ul>
@@ -364,6 +445,7 @@ function ConversationItem({
   isActive,
   isFocused,
   isEditing,
+  liveAgentSessions,
   onSelect,
   onDelete,
   onStartRename,
@@ -374,6 +456,7 @@ function ConversationItem({
   isActive: boolean
   isFocused: boolean
   isEditing: boolean
+  liveAgentSessions: Set<string>
   onSelect: () => void
   onDelete: () => void
   onStartRename: () => void
@@ -438,7 +521,7 @@ function ConversationItem({
   return (
     <div
       ref={itemRef}
-      className={`group relative mb-0.5 flex w-full items-center rounded-lg text-left text-sm transition-colors ${
+      className={`group relative mb-0.5 flex w-full flex-col gap-1 rounded-lg text-left text-sm transition-colors sm:flex-row sm:items-center sm:gap-0 ${
         isActive
           ? 'bg-zinc-800/80 text-zinc-100'
           : isFocused
@@ -459,7 +542,7 @@ function ConversationItem({
         }}
         aria-current={isActive ? 'page' : undefined}
         aria-label={`${conversation.title}, ${timeLabel}`}
-        className="min-h-[44px] min-w-0 flex-1 rounded-lg px-3 py-2.5 text-left focus-ring md:py-2"
+        className="min-h-[44px] w-full min-w-0 flex-1 rounded-lg px-3 py-2.5 text-left focus-ring md:py-2 sm:w-auto"
       >
         {isEditing ? (
           <input
@@ -490,8 +573,8 @@ function ConversationItem({
       {/* BUG FIX: action buttons wrapped in a flex container with pr-1.5
           so they don't get clipped by the ScrollArea viewport/scrollbar.
           group-focus-within ensures buttons stay visible when any has focus. */}
-      <div className="flex shrink-0 items-center gap-0.5 pr-1.5 opacity-100 transition-opacity md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100">
-        {conversation.sessionId && (
+      <div className="flex w-full shrink-0 items-center justify-end gap-0.5 px-2 pb-2 pr-2 opacity-100 transition-opacity sm:w-auto sm:justify-start sm:px-0 sm:pb-0 sm:pr-1.5 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100">
+        {conversation.sessionId && liveAgentSessions.has(conversation.sessionId) && (
           <Tooltip>
             <TooltipTrigger asChild>
               <button

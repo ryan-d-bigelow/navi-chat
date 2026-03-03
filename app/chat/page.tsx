@@ -32,7 +32,8 @@ import { useMobileNav } from '@/app/context/mobile-nav-context'
 import { useChat } from '@ai-sdk/react'
 import { DefaultChatTransport } from 'ai'
 import type { UIMessage } from 'ai'
-import { LayoutList, Menu, MessageSquare, PanelRight, Plus } from 'lucide-react'
+import { Bot, LayoutList, Menu, MessageSquare, PanelRight, Plus } from 'lucide-react'
+import Link from 'next/link'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 // Stable ref accessor extracted outside render to satisfy react-hooks/refs.
@@ -51,6 +52,15 @@ interface PendingStream {
 
 type ReasoningPart = { type: 'reasoning'; reasoning?: string; text?: string }
 type ToolCallPart = { type: 'tool-call'; toolName?: string; name?: string }
+
+type AgentStatus = 'running' | 'idle' | 'done'
+
+interface AgentInfo {
+  id: string
+  status: AgentStatus
+}
+
+const AGENT_REFRESH_MS = 30_000
 
 function getTextContent(message: UIMessage): string {
   return message.parts
@@ -159,6 +169,7 @@ export default function ChatPage() {
   const [canvas, setCanvas] = useState<CanvasState>(CANVAS_INITIAL)
   const [input, setInput] = useState('')
   const [mobileView, setMobileView] = useState<'list' | 'chat'>('list')
+  const [liveAgentSessions, setLiveAgentSessions] = useState<Set<string>>(new Set())
   // Tracks in-progress stream content received via SSE (used when reconnecting
   // to a conversation that has an active stream from another tab/prior navigation)
   const [pendingStream, setPendingStream] = useState<PendingStream | null>(null)
@@ -191,6 +202,29 @@ export default function ChatPage() {
   useEffect(() => {
     loadConversations().then(setConversations)
   }, [])
+
+  const refreshAgents = useCallback(async () => {
+    try {
+      const res = await fetch('/api/agents', { cache: 'no-store' })
+      if (!res.ok) return
+      const data: AgentInfo[] = await res.json()
+      const next = new Set<string>()
+      for (const agent of data) {
+        if (agent.status === 'running' || agent.status === 'idle') {
+          next.add(agent.id)
+        }
+      }
+      setLiveAgentSessions(next)
+    } catch (err) {
+      console.warn('[navi-chat] failed to refresh agents:', err)
+    }
+  }, [])
+
+  useEffect(() => {
+    refreshAgents()
+    const interval = setInterval(refreshAgents, AGENT_REFRESH_MS)
+    return () => clearInterval(interval)
+  }, [refreshAgents])
 
   // SSE subscription
   useEffect(() => {
@@ -329,6 +363,7 @@ export default function ChatPage() {
                 c.id === payload.conversation_id ? { ...c, sessionId: payload.session_id } : c
               )
             )
+            refreshAgents()
             break
           }
         }
@@ -338,7 +373,7 @@ export default function ChatPage() {
     }
 
     return () => es.close()
-  }, [])
+  }, [refreshAgents])
 
   const activeConversation = conversations.find((c) => c.id === activeId)
 
@@ -646,12 +681,13 @@ export default function ChatPage() {
           onNew={handleNewChat}
           onDelete={handleDeleteConversation}
           onRename={handleRenameConversation}
+          liveAgentSessions={liveAgentSessions}
         />
       </div>
 
       {/* Mobile sidebar (Sheet) — kept for desktop sheet fallback, hidden on mobile */}
       <Sheet open={sidebarOpen} onOpenChange={setSidebarOpen}>
-        <SheetContent side="left" className="w-[85vw] max-w-[320px] border-zinc-800/60 bg-zinc-950/95 p-0 backdrop-blur-xl sm:w-[300px]">
+        <SheetContent side="left" className="w-[100vw] min-w-[280px] max-w-[420px] border-zinc-800/60 bg-zinc-950/95 p-0 backdrop-blur-xl sm:w-[320px]">
           <SheetTitle className="sr-only">Conversations</SheetTitle>
           <Sidebar
             conversations={conversations}
@@ -660,6 +696,7 @@ export default function ChatPage() {
             onNew={handleNewChat}
             onDelete={handleDeleteConversation}
             onRename={handleRenameConversation}
+            liveAgentSessions={liveAgentSessions}
           />
         </SheetContent>
       </Sheet>
@@ -687,10 +724,22 @@ export default function ChatPage() {
           </button>
           <span className="text-lg" role="img" aria-label="Navi">🧚</span>
           <h1 className="text-sm font-semibold tracking-tight text-zinc-200">Navi Chat</h1>
+          {activeConversation?.sessionId && liveAgentSessions.has(activeConversation.sessionId) && (
+            <Link
+              href={`/agents?agentId=${activeConversation.sessionId}`}
+              aria-label={`View OpenClaw session ${activeConversation.sessionId}`}
+              title={activeConversation.sessionId}
+              className="flex max-w-[150px] items-center gap-1 rounded-full border border-zinc-700/80 bg-zinc-900/60 px-2.5 py-1 text-[11px] font-medium text-emerald-300 transition-colors hover:border-emerald-400/60 hover:text-emerald-200 focus-ring sm:max-w-none"
+            >
+              <Bot className="h-3 w-3" aria-hidden="true" />
+              <span className="truncate">OpenClaw · {activeConversation.sessionId.slice(0, 8)}</span>
+            </Link>
+          )}
           <div className="flex-1" />
           <button
             onClick={handleCanvasToggle}
             aria-label={canvas.visible ? 'Hide canvas panel' : 'Show canvas panel'}
+            title="Canvas panel — Navi pushes structured content here during responses"
             aria-pressed={canvas.visible}
             className={`hidden min-h-[44px] min-w-[44px] items-center justify-center rounded-lg transition-colors focus-ring md:flex ${
               canvas.visible
