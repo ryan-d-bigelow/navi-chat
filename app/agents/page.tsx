@@ -3,12 +3,14 @@
 import { SidebarNav } from '@/components/chat/sidebar'
 import { Separator } from '@/components/ui/separator'
 import type { AgentInfo, AgentType } from '@/lib/agents'
+import { AgentLogViewer } from '@/components/agents/agent-log-viewer'
 import {
   ArrowLeft,
   Bot,
   ChevronDown,
   Clock,
   Cpu,
+  FileText,
   Globe,
   Home,
   RefreshCw,
@@ -97,6 +99,12 @@ const TYPE_META: Record<
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
+
+/** Extract ticket number from agent task/name (e.g. "NAV-53" → 53) */
+function extractTicketNumber(agent: AgentInfo): number | null {
+  const match = (agent.task + ' ' + agent.name).match(/NAV-(\d+)/i)
+  return match ? parseInt(match[1], 10) : null
+}
 
 function timeElapsed(startedAt: number): string {
   const ms = Date.now() - startedAt
@@ -442,7 +450,15 @@ function LogViewer({ agent }: { agent: AgentInfo }) {
 
 // ─── Agent detail header ──────────────────────────────────────────────────────
 
-function AgentDetailHeader({ agent }: { agent: AgentInfo }) {
+function AgentDetailHeader({
+  agent,
+  ticketLogOpen,
+  onToggleTicketLog,
+}: {
+  agent: AgentInfo
+  ticketLogOpen: boolean
+  onToggleTicketLog: (() => void) | null
+}) {
   const meta = TYPE_META[agent.agentType]
   const [elapsed, setElapsed] = useState(() => timeElapsed(agent.startedAt))
 
@@ -486,21 +502,32 @@ function AgentDetailHeader({ agent }: { agent: AgentInfo }) {
           <p className="mt-0.5 truncate text-xs text-zinc-500" title={agent.task}>
             {agent.task}
           </p>
-          {(agent.pid > 0 || agent.sessionKey) && (
-            <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5">
-              {agent.pid > 0 && (
-                <span className="text-[10px] text-zinc-700">PID {agent.pid}</span>
-              )}
-              {agent.sessionKey && (
-                <span
-                  className="max-w-[200px] truncate text-[10px] text-zinc-700"
-                  title={agent.sessionKey}
-                >
-                  {agent.sessionKey}
-                </span>
-              )}
-            </div>
-          )}
+          <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5">
+            {agent.pid > 0 && (
+              <span className="text-[10px] text-zinc-700">PID {agent.pid}</span>
+            )}
+            {agent.sessionKey && (
+              <span
+                className="max-w-[200px] truncate text-[10px] text-zinc-700"
+                title={agent.sessionKey}
+              >
+                {agent.sessionKey}
+              </span>
+            )}
+            {onToggleTicketLog && (
+              <button
+                onClick={onToggleTicketLog}
+                className={`flex items-center gap-1 rounded-md border px-2 py-0.5 text-[10px] font-medium transition-colors focus-ring ${
+                  ticketLogOpen
+                    ? 'border-sky-500/30 bg-sky-500/10 text-sky-400'
+                    : 'border-zinc-700 bg-zinc-800 text-zinc-400 hover:bg-zinc-700 hover:text-zinc-300'
+                }`}
+              >
+                <FileText className="h-2.5 w-2.5" aria-hidden="true" />
+                {ticketLogOpen ? 'Hide Log' : 'View Log'}
+              </button>
+            )}
+          </div>
         </div>
       </div>
     </header>
@@ -630,6 +657,13 @@ function AgentsPageInner() {
   const done = agents.filter((a) => a.status === 'done')
 
   const selectedAgent = agents.find((a) => a.id === selectedId)
+  const selectedTicket = selectedAgent ? extractTicketNumber(selectedAgent) : null
+  const [ticketLogOpen, setTicketLogOpen] = useState(false)
+
+  // Reset ticket log when agent changes
+  useEffect(() => {
+    setTicketLogOpen(false)
+  }, [selectedId])
 
   return (
     <div className="flex h-dvh overflow-hidden bg-zinc-900">
@@ -716,7 +750,19 @@ function AgentsPageInner() {
                 Agents
               </button>
             </div>
-            <AgentDetailHeader agent={selectedAgent} />
+            <AgentDetailHeader
+              agent={selectedAgent}
+              ticketLogOpen={ticketLogOpen}
+              onToggleTicketLog={selectedTicket !== null ? () => setTicketLogOpen((v) => !v) : null}
+            />
+            {ticketLogOpen && selectedTicket !== null && (
+              <div className="shrink-0 border-b border-zinc-800/60 px-4 py-3">
+                <AgentLogViewer
+                  ticket={selectedTicket}
+                  onClose={() => setTicketLogOpen(false)}
+                />
+              </div>
+            )}
             <LogViewer key={selectedAgent.id} agent={selectedAgent} />
           </>
         ) : (
