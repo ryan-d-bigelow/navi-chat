@@ -1,6 +1,7 @@
 'use client'
 
 import { SidebarNav } from '@/components/chat/sidebar'
+import { MobileBottomNav } from '@/components/navigation/mobile-bottom-nav'
 import { Separator } from '@/components/ui/separator'
 import type { AgentInfo, AgentType } from '@/lib/agents'
 import {
@@ -19,7 +20,7 @@ import {
   WifiOff,
   Zap,
 } from 'lucide-react'
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, Suspense } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -168,13 +169,23 @@ function AgentCard({
   now: number
 }) {
   const origin = getOriginLabel(agent)
+  const ticket = agent.ticket
+  const ticketUrl = ticket ? `https://linear.app/naviagent/issue/${ticket.id}` : null
 
   return (
-    <button
+    <div
+      role="button"
+      tabIndex={0}
       onClick={onSelect}
+      onKeyDown={(event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault()
+          onSelect()
+        }
+      }}
       aria-current={isSelected ? 'true' : undefined}
       aria-label={`${agent.name} — ${agent.status}, ${TYPE_META[agent.agentType].label}`}
-      className={`group w-full rounded-lg border p-3 text-left transition-all focus-ring ${
+      className={`group min-h-[64px] w-full rounded-lg border p-3 text-left transition-all focus-ring ${
         isSelected
           ? 'border-zinc-700 bg-zinc-800 shadow-sm'
           : 'border-transparent hover:border-zinc-800 hover:bg-zinc-800/40'
@@ -189,9 +200,26 @@ function AgentCard({
         <TypeBadge agentType={agent.agentType} />
       </div>
 
+      {/* Row 2: ticket */}
+      {ticket && ticketUrl && (
+        <a
+          href={ticketUrl}
+          target="_blank"
+          rel="noreferrer"
+          onClick={(event) => event.stopPropagation()}
+          className="mt-1 flex min-h-[44px] items-center gap-2 text-xs text-cyan-300 transition-colors hover:text-cyan-200 focus-visible:outline-none sm:min-h-0"
+          title={`${ticket.id}: ${ticket.title}`}
+        >
+          <span className="rounded-full border border-cyan-400/30 bg-cyan-500/10 px-1.5 py-0.5 text-[10px] font-semibold text-cyan-300">
+            {ticket.id}
+          </span>
+          <span className="line-clamp-1 text-zinc-400">{ticket.title}</span>
+        </a>
+      )}
+
       {/* Row 2: task */}
       <p
-        className="mt-1.5 line-clamp-1 text-xs leading-relaxed text-zinc-500"
+        className={`line-clamp-1 text-xs leading-relaxed text-zinc-500 ${ticket ? 'mt-1' : 'mt-1.5'}`}
         title={agent.task}
       >
         {agent.task}
@@ -216,7 +244,7 @@ function AgentCard({
           {timeElapsed(agent.startedAt)}
         </span>
       </div>
-    </button>
+    </div>
   )
 }
 
@@ -388,7 +416,7 @@ function LogViewer({ agent }: { agent: AgentInfo }) {
           <button
             onClick={() => scrollToBottom(true)}
             aria-label="Scroll to latest log output"
-            className="flex items-center gap-1 rounded-lg border border-zinc-700 bg-zinc-800 px-2 py-1 text-[10px] font-medium text-zinc-300 transition-colors hover:bg-zinc-700 focus-ring"
+            className="flex min-h-[44px] items-center gap-1 rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-xs font-medium text-zinc-300 transition-colors hover:bg-zinc-700 focus-ring sm:min-h-0 sm:px-2 sm:py-1 sm:text-[10px]"
           >
             <ChevronDown className="h-3 w-3" aria-hidden="true" />
             Scroll to bottom
@@ -429,7 +457,7 @@ function LogViewer({ agent }: { agent: AgentInfo }) {
           <button
             onClick={() => scrollToBottom(true)}
             aria-label="Jump to latest log output"
-            className="absolute bottom-4 left-1/2 z-10 flex -translate-x-1/2 items-center gap-1.5 rounded-full border border-zinc-700 bg-zinc-800/90 px-3 py-1.5 text-xs font-medium text-zinc-300 shadow-lg backdrop-blur-sm transition-colors hover:bg-zinc-700 focus-ring"
+            className="absolute bottom-4 left-1/2 z-10 flex min-h-[44px] -translate-x-1/2 items-center gap-1.5 rounded-full border border-zinc-700 bg-zinc-800/90 px-4 py-2 text-xs font-medium text-zinc-300 shadow-lg backdrop-blur-sm transition-colors hover:bg-zinc-700 focus-ring sm:min-h-0 sm:px-3 sm:py-1.5"
           >
             <ChevronDown className="h-3.5 w-3.5" aria-hidden="true" />
             Jump to bottom
@@ -584,6 +612,7 @@ function AgentsPageInner() {
   const [selectedId, setSelectedId] = useState<string | null>(initialAgentId)
   const [loading, setLoading] = useState(true)
   const [now, setNow] = useState(Date.now())
+  const anchoredStartsRef = useRef<Map<string, number>>(new Map())
 
   // ── Fetch agents ────────────────────────────────────────────────────────
 
@@ -592,6 +621,17 @@ function AgentsPageInner() {
       const res = await fetch('/api/agents')
       if (res.ok) {
         const data: AgentInfo[] = await res.json()
+        const anchors = anchoredStartsRef.current
+        const seen = new Set<string>()
+        for (const agent of data) {
+          seen.add(agent.id)
+          if (!anchors.has(agent.id)) {
+            anchors.set(agent.id, agent.startedAt)
+          }
+        }
+        for (const id of anchors.keys()) {
+          if (!seen.has(id)) anchors.delete(id)
+        }
         setAgents(data)
         // Auto-select: prefer initialAgentId if it exists in the list, else first agent
         setSelectedId((prev) => {
@@ -625,14 +665,23 @@ function AgentsPageInner() {
 
   // ── Group agents by status ──────────────────────────────────────────────
 
-  const running = agents.filter((a) => a.status === 'running')
-  const idle = agents.filter((a) => a.status === 'idle')
-  const done = agents.filter((a) => a.status === 'done')
+  const anchoredAgents = useMemo(() => {
+    const anchors = anchoredStartsRef.current
+    return agents.map((agent) => {
+      const anchoredStart = anchors.get(agent.id)
+      if (anchoredStart === undefined || anchoredStart === agent.startedAt) return agent
+      return { ...agent, startedAt: anchoredStart }
+    })
+  }, [agents])
 
-  const selectedAgent = agents.find((a) => a.id === selectedId)
+  const running = anchoredAgents.filter((a) => a.status === 'running')
+  const idle = anchoredAgents.filter((a) => a.status === 'idle')
+  const done = anchoredAgents.filter((a) => a.status === 'done')
+
+  const selectedAgent = anchoredAgents.find((a) => a.id === selectedId)
 
   return (
-    <div className="flex h-dvh overflow-hidden bg-zinc-900">
+    <div className="flex h-dvh overflow-hidden bg-zinc-900 pb-20 md:pb-0">
       {/* ── Left panel — always visible on md+, toggles on mobile ──── */}
       <nav
         aria-label="Agent list"
@@ -658,7 +707,7 @@ function AgentsPageInner() {
               fetchAgents()
             }}
             aria-label="Refresh agent list"
-            className="rounded-lg p-1.5 text-zinc-500 transition-colors hover:bg-zinc-800 hover:text-zinc-300 focus-ring"
+            className="flex min-h-[44px] min-w-[44px] items-center justify-center rounded-lg text-zinc-500 transition-colors hover:bg-zinc-800 hover:text-zinc-300 focus-ring"
           >
             <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin motion-reduce:animate-none' : ''}`} aria-hidden="true" />
           </button>
@@ -723,6 +772,8 @@ function AgentsPageInner() {
           <EmptyState hasAgents={agents.length > 0} />
         )}
       </main>
+
+      <MobileBottomNav />
     </div>
   )
 }

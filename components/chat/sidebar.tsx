@@ -84,7 +84,7 @@ export function SidebarNav() {
   ] as const
 
   return (
-    <nav aria-label="Main navigation" className="flex gap-1 p-3">
+    <nav aria-label="Main navigation" className="hidden gap-1 p-3 md:flex">
       {links.map(({ href, label, icon: Icon }) => {
         const active = pathname.startsWith(href)
         return (
@@ -92,7 +92,7 @@ export function SidebarNav() {
             key={href}
             href={href}
             aria-current={active ? 'page' : undefined}
-            className={`flex flex-1 items-center justify-center gap-1.5 rounded-lg px-2 py-1.5 text-xs font-medium transition-colors focus-ring ${
+            className={`flex min-h-[44px] flex-1 items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium transition-colors focus-ring md:min-h-0 md:px-2 md:py-1.5 md:text-xs ${
               active
                 ? 'bg-zinc-800 text-zinc-100'
                 : 'text-zinc-400 hover:bg-zinc-800/50 hover:text-zinc-300'
@@ -236,7 +236,7 @@ export function Sidebar({
   return (
     <nav
       aria-label="Conversations"
-      className="glass flex h-full w-[260px] flex-col border-r border-zinc-800/60"
+      className="glass flex h-full w-full flex-col border-r border-zinc-800/60 md:w-[260px]"
       onKeyDown={handleKeyDown}
     >
       <SidebarNav />
@@ -246,28 +246,28 @@ export function Sidebar({
           onClick={onNew}
           variant="outline"
           aria-label="Start a new chat"
-          className="w-full justify-start gap-2 border-zinc-700/60 bg-zinc-800/60 text-zinc-300 transition-all hover:bg-zinc-700 hover:text-zinc-100 focus-ring"
+          className="min-h-[44px] w-full justify-start gap-2 border-zinc-700/60 bg-zinc-800/60 text-zinc-300 transition-all hover:bg-zinc-700 hover:text-zinc-100 focus-ring"
         >
           <MessageSquarePlus className="h-4 w-4" aria-hidden="true" />
           New Chat
         </Button>
         <div className="relative">
-          <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-zinc-500" />
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-500 md:left-2.5 md:h-3.5 md:w-3.5" />
           <input
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search chats\u2026"
             aria-label="Filter conversations"
-            className="h-8 w-full rounded-md border border-zinc-700/60 bg-zinc-800/60 pl-8 pr-8 text-xs text-zinc-300 placeholder:text-zinc-500 transition-colors focus:border-zinc-600 focus:outline-none focus:ring-1 focus:ring-zinc-500"
+            className="h-11 w-full rounded-md border border-zinc-700/60 bg-zinc-800/60 pl-10 pr-10 text-sm text-zinc-300 placeholder:text-zinc-500 transition-colors focus:border-zinc-600 focus:outline-none focus:ring-1 focus:ring-zinc-500 md:h-8 md:pl-8 md:pr-8 md:text-xs"
           />
           {search && (
             <button
               onClick={() => setSearch('')}
               aria-label="Clear search"
-              className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-0.5 text-zinc-500 hover:text-zinc-300"
+              className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-2 text-zinc-500 hover:text-zinc-300 md:p-0.5"
             >
-              <X className="h-3 w-3" />
+              <X className="h-4 w-4 md:h-3 md:w-3" />
             </button>
           )}
         </div>
@@ -459,7 +459,7 @@ function ConversationItem({
         }}
         aria-current={isActive ? 'page' : undefined}
         aria-label={`${conversation.title}, ${timeLabel}`}
-        className="min-w-0 flex-1 rounded-lg px-3 py-2 text-left focus-ring"
+        className="min-h-[44px] min-w-0 flex-1 rounded-lg px-3 py-2.5 text-left focus-ring md:py-2"
       >
         {isEditing ? (
           <input
@@ -490,7 +490,7 @@ function ConversationItem({
       {/* BUG FIX: action buttons wrapped in a flex container with pr-1.5
           so they don't get clipped by the ScrollArea viewport/scrollbar.
           group-focus-within ensures buttons stay visible when any has focus. */}
-      <div className="flex shrink-0 items-center gap-0.5 pr-1.5 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
+      <div className="flex shrink-0 items-center gap-0.5 pr-1.5 opacity-100 transition-opacity md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100">
         {conversation.sessionId && (
           <Tooltip>
             <TooltipTrigger asChild>
@@ -500,7 +500,7 @@ function ConversationItem({
                   router.push(`/agents?agentId=${conversation.sessionId}`)
                 }}
                 aria-label={`View agent for ${conversation.title}`}
-                className="rounded p-1.5 text-zinc-500 transition-colors hover:bg-zinc-700 hover:text-zinc-300 focus-ring"
+                className="flex min-h-[44px] min-w-[44px] items-center justify-center rounded text-zinc-500 transition-colors hover:bg-zinc-700 hover:text-zinc-300 focus-ring md:min-h-0 md:min-w-0 md:p-1.5"
               >
                 <Bot className="h-3.5 w-3.5" aria-hidden="true" />
               </button>
@@ -518,7 +518,7 @@ function ConversationItem({
                 onDelete()
               }}
               aria-label={`Delete ${conversation.title}`}
-              className="rounded p-1.5 text-zinc-500 transition-colors hover:bg-red-900/40 hover:text-red-400 focus-ring"
+              className="flex min-h-[44px] min-w-[44px] items-center justify-center rounded text-zinc-500 transition-colors hover:bg-red-900/40 hover:text-red-400 focus-ring md:min-h-0 md:min-w-0 md:p-1.5"
             >
               <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
             </button>

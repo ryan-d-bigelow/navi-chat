@@ -5,6 +5,7 @@ import { MessageList } from '@/components/chat/message-list'
 import { Sidebar } from '@/components/chat/sidebar'
 import { CanvasPanel } from '@/components/canvas/canvas-panel'
 import { LinearPanel } from '@/components/linear/linear-panel'
+import { MobileBottomNav } from '@/components/navigation/mobile-bottom-nav'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import {
   Sheet,
@@ -480,7 +481,7 @@ export default function ChatPage() {
 
       {/* Mobile sidebar (Sheet) */}
       <Sheet open={sidebarOpen} onOpenChange={setSidebarOpen}>
-        <SheetContent side="left" className="w-[260px] border-zinc-800/60 bg-zinc-950/95 p-0 backdrop-blur-xl">
+        <SheetContent side="left" className="w-[85vw] max-w-[320px] border-zinc-800/60 bg-zinc-950/95 p-0 backdrop-blur-xl sm:w-[300px]">
           <SheetTitle className="sr-only">Conversations</SheetTitle>
           <Sidebar
             conversations={conversations}
@@ -496,7 +497,7 @@ export default function ChatPage() {
       {/* Main chat area */}
       <main className="flex flex-1 flex-col overflow-hidden" id="main-content">
         {/* Header */}
-        <header className="glass-subtle flex items-center gap-3 border-b border-zinc-800/60 px-4 py-3">
+        <header className="glass-subtle flex items-center gap-3 border-b border-zinc-800/60 px-3 py-3 sm:px-4">
           <button
             onClick={() => setSidebarOpen(true)}
             aria-label="Open conversation sidebar"
@@ -552,7 +553,7 @@ export default function ChatPage() {
         )}
 
         {/* Input — sticky at bottom */}
-        <div id="chat-input" className="mx-auto w-full max-w-3xl px-4 pb-4 pt-2 sm:px-6">
+        <div id="chat-input" className="mx-auto w-full max-w-3xl px-4 pb-[calc(env(safe-area-inset-bottom)+5rem)] pt-2 sm:px-6 md:pb-[calc(env(safe-area-inset-bottom)+1rem)]">
           <ChatInput
             input={input}
             setInput={setInput}
@@ -579,6 +580,8 @@ export default function ChatPage() {
           <LinearPanel onClose={() => setLinearOpen(false)} />
         </div>
       )}
+
+      <MobileBottomNav />
     </div>
   )
 }

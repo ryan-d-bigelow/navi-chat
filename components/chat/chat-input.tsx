@@ -67,7 +67,7 @@ export function ChatInput({
         placeholder="Message Navi..."
         aria-label="Message input — press Enter to send, Shift+Enter for new line"
         disabled={isLoading}
-        className="min-h-[40px] max-h-[200px] resize-none border-0 bg-transparent text-sm leading-relaxed text-zinc-100 placeholder:text-zinc-500 focus-visible:ring-0"
+        className="min-h-[44px] max-h-[200px] resize-none border-0 bg-transparent text-base leading-relaxed text-zinc-100 placeholder:text-zinc-500 focus-visible:ring-0 sm:text-sm"
         rows={1}
       />
       <Button

@@ -136,7 +136,7 @@ function IssueCard({ issue }: { issue: LinearIssue }) {
       target="_blank"
       rel="noopener noreferrer"
       aria-label={`${issue.identifier}: ${issue.title}`}
-      className="group flex items-start gap-2.5 rounded-lg px-2 py-2 transition-colors hover:bg-zinc-800/60 focus-ring"
+      className="group flex min-h-[44px] items-start gap-2.5 rounded-lg px-2 py-2 transition-colors hover:bg-zinc-800/60 focus-ring"
     >
       <div className="mt-1.5 shrink-0">
         <PriorityDot priority={issue.priority} />
