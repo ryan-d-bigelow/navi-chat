@@ -1059,7 +1059,7 @@ function ChatPageInner() {
 
       {/* Main chat area + logs split */}
       <div
-        className={`flex min-w-0 flex-1 flex-col overflow-hidden ${mobileView === 'chat' ? 'flex' : 'hidden md:flex'}`}
+        className={`flex h-full min-w-0 flex-1 flex-col overflow-hidden ${mobileView === 'chat' ? 'flex' : 'hidden md:flex'}`}
         id="main-content"
       >
         {!isDesktop && mobileView === 'chat' && (
@@ -1093,11 +1093,11 @@ function ChatPageInner() {
             </button>
           </div>
         )}
-        <div ref={splitRef} className="flex min-h-0 flex-1 flex-col md:flex-row">
+        <div ref={splitRef} className="flex h-full min-h-0 flex-1 flex-col md:flex-row">
           {/* Linear tasks panel — desktop only, inside split container */}
           {showLinearPanel && (
             <div
-              className="hidden min-w-[200px] flex-none md:flex"
+              className="hidden h-full min-w-[200px] flex-none md:flex"
               style={linearWidthStyle}
             >
               <LinearPanel onClose={() => setLinearOpen(false)} />
@@ -1139,6 +1139,18 @@ function ChatPageInner() {
               >
                 <Menu className="h-5 w-5" aria-hidden="true" />
               </button>
+              <button
+                onClick={() => setLinearOpen((v) => !v)}
+                aria-label={linearOpen ? 'Hide Linear tasks panel' : 'Show Linear tasks panel'}
+                aria-pressed={linearOpen}
+                className={`hidden min-h-[44px] min-w-[44px] items-center justify-center rounded-lg transition-colors focus-ring md:flex ${
+                  linearOpen
+                    ? 'bg-zinc-800 text-violet-400'
+                    : 'text-zinc-400 hover:bg-zinc-800 hover:text-zinc-300'
+                }`}
+              >
+                <LayoutList className="h-4 w-4" aria-hidden="true" />
+              </button>
               <span className="text-lg" role="img" aria-label="Navi">🧚</span>
               <h1 className="text-sm font-semibold tracking-tight text-zinc-200">Navi Chat</h1>
               {activeConversation?.sessionKey && activeSessionLabel && (
@@ -1174,18 +1186,6 @@ function ChatPageInner() {
                 }`}
               >
                 <Terminal className="h-4 w-4" aria-hidden="true" />
-              </button>
-              <button
-                onClick={() => setLinearOpen((v) => !v)}
-                aria-label={linearOpen ? 'Hide Linear tasks panel' : 'Show Linear tasks panel'}
-                aria-pressed={linearOpen}
-                className={`hidden min-h-[44px] min-w-[44px] items-center justify-center rounded-lg transition-colors focus-ring md:flex ${
-                  linearOpen
-                    ? 'bg-zinc-800 text-violet-400'
-                    : 'text-zinc-400 hover:bg-zinc-800 hover:text-zinc-300'
-                }`}
-              >
-                <LayoutList className="h-4 w-4" aria-hidden="true" />
               </button>
             </header>
 
@@ -1246,7 +1246,7 @@ function ChatPageInner() {
           {showLogsPanel && (
             <aside
               className={`flex min-h-0 flex-col border-t border-zinc-800/60 bg-zinc-950 md:border-t-0 ${
-                isDesktop ? 'min-w-[240px] flex-none' : 'flex-1 w-full'
+                isDesktop ? 'h-full min-w-[240px] flex-none' : 'flex-1 w-full'
               }`}
               style={logsWidthStyle}
             >
