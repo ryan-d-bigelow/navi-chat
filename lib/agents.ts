@@ -1,4 +1,5 @@
 import { execSync } from 'child_process'
+import Database from 'better-sqlite3'
 import { readFileSync, existsSync } from 'fs'
 import { homedir } from 'os'
 import path from 'path'
@@ -24,6 +25,7 @@ export interface AgentInfo {
   task: string
   ticket?: { id: string; title: string }
   sessionKey?: string
+  updatedAt?: number
   startedAt: number
   pid: number
   source: 'session' | 'process'
@@ -35,6 +37,9 @@ interface SessionEntry {
   systemSent?: boolean
   skillsSnapshot?: { prompt?: string }
   lastMessage?: string
+  lastChannel?: string
+  origin?: { provider?: string }
+  deliveryContext?: { channel?: string }
 }
 
 type SessionsJson = Record<string, SessionEntry>
@@ -44,8 +49,16 @@ const SESSIONS_PATH = path.join(
   '.openclaw/agents/main/sessions/sessions.json',
 )
 
+const NAVI_DB_PATH = path.join(
+  homedir(),
+  '.openclaw/workspace/data/navi.db',
+)
+
 /** Derive agent type + display name from session key */
-function classifySession(key: string): { agentType: AgentType; name: string } {
+function classifySession(
+  key: string,
+  session?: SessionEntry,
+): { agentType: AgentType; name: string } {
   // key examples:
   //   agent:main:main
   //   agent:coder:main
@@ -69,6 +82,9 @@ function classifySession(key: string): { agentType: AgentType; name: string } {
     if (parts[2] === 'slack') return { agentType: 'slack', name: 'Slack' }
     if (parts[2] === 'openai') return { agentType: 'webchat', name: 'Navi Chat' }
     if (parts[2] === 'main' && parts[3] === 'thread') return { agentType: 'slack', name: 'Slack Thread' }
+    const provider = session?.origin?.provider ?? session?.deliveryContext?.channel ?? session?.lastChannel
+    if (provider === 'slack') return { agentType: 'slack', name: 'Slack' }
+    if (provider === 'openai') return { agentType: 'webchat', name: 'Navi Chat' }
     return { agentType: 'navi', name: 'Navi' }
   }
 
@@ -131,6 +147,7 @@ function parseProcesses(): AgentInfo[] {
         status: 'running',
         model: '',
         task,
+        updatedAt: Date.now(),
         startedAt: Date.now(),
         pid,
         source: 'process',
@@ -139,6 +156,47 @@ function parseProcesses(): AgentInfo[] {
     return agents
   } catch {
     return []
+  }
+}
+
+function isPidAlive(pid: number): boolean {
+  if (!pid || pid <= 0) return false
+  try {
+    process.kill(pid, 0)
+    return true
+  } catch {
+    return false
+  }
+}
+
+function loadRunningNaviOpsPids(): Set<number> {
+  try {
+    if (!existsSync(NAVI_DB_PATH)) return new Set()
+    const db = new Database(NAVI_DB_PATH, { readonly: true })
+
+    const tableExists = db
+      .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='navi_ops'")
+      .get()
+    if (!tableExists) {
+      db.close()
+      return new Set()
+    }
+
+    const columns = db.prepare('PRAGMA table_info(navi_ops)').all() as Array<{ name: string }>
+    const names = new Set(columns.map((c) => c.name))
+    const phaseKey = names.has('phase') ? 'phase' : names.has('state') ? 'state' : null
+    const where = phaseKey ? `WHERE ${phaseKey} = 'running'` : ''
+    const rows = db.prepare(`SELECT pid FROM navi_ops ${where}`).all() as Array<{ pid: number }>
+    db.close()
+
+    const pids = new Set<number>()
+    for (const row of rows) {
+      const pid = Number(row.pid)
+      if (!Number.isNaN(pid) && isPidAlive(pid)) pids.add(pid)
+    }
+    return pids
+  } catch {
+    return new Set()
   }
 }
 
@@ -152,6 +210,8 @@ function parseOpenClawSessions(): AgentInfo[] {
     const agents: AgentInfo[] = []
     const now = Date.now()
     const THIRTY_MIN_MS = 30 * 60 * 1000
+    const runningNaviOpsPids = loadRunningNaviOpsPids()
+    const hasActiveNaviOps = runningNaviOpsPids.size > 0
 
     for (const [key, session] of Object.entries(sessions)) {
       const existing = uniqueSessions.get(session.sessionId)
@@ -170,17 +230,21 @@ function parseOpenClawSessions(): AgentInfo[] {
     }
 
     for (const { key, session } of uniqueSessions.values()) {
-      const age = now - (session.updatedAt ?? 0)
-      const { agentType, name } = classifySession(key)
+      const updatedAt = session.updatedAt ?? 0
+      const age = now - updatedAt
+      if (age > THIRTY_MIN_MS) continue
+
+      const { agentType, name } = classifySession(key, session)
       const task = extractTask(key, session)
 
-      // Determine status: recently updated = running/idle, old = done
-      let status: AgentInfo['status'] = 'idle'
-      if (age < THIRTY_MIN_MS) {
-        status = session.systemSent ? 'running' : 'idle'
-      } else {
-        status = 'done'
-      }
+      const isConversation = agentType === 'slack' || agentType === 'webchat'
+      const isSystem = agentType === 'cron'
+      const isAgentSession = !isConversation && !isSystem
+
+      if (isAgentSession && !hasActiveNaviOps) continue
+      if (isSystem && !hasActiveNaviOps) continue
+
+      const status: AgentInfo['status'] = session.systemSent ? 'running' : 'idle'
 
       agents.push({
         id: session.sessionId,
@@ -190,16 +254,17 @@ function parseOpenClawSessions(): AgentInfo[] {
         model: 'claude-sonnet-4-6',
         task,
         sessionKey: key,
-        startedAt: session.updatedAt ?? now,
+        updatedAt,
+        startedAt: updatedAt || now,
         pid: 0,
         source: 'session',
       })
     }
 
-    // Sort: running first, then idle, then done; within each group by updatedAt desc
-    const statusOrder = { running: 0, idle: 1, done: 2 }
+    // Sort: running first, then idle; within each group by updatedAt desc
+    const statusOrder: Record<string, number> = { running: 0, idle: 1 }
     agents.sort((a, b) => {
-      const statusDiff = statusOrder[a.status] - statusOrder[b.status]
+      const statusDiff = (statusOrder[a.status] ?? 99) - (statusOrder[b.status] ?? 99)
       if (statusDiff !== 0) return statusDiff
       return b.startedAt - a.startedAt
     })

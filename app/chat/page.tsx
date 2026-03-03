@@ -57,6 +57,7 @@ type AgentStatus = 'running' | 'idle' | 'done'
 
 interface AgentInfo {
   id: string
+  source: 'session' | 'process'
   status: AgentStatus
 }
 
@@ -170,6 +171,7 @@ export default function ChatPage() {
   const [input, setInput] = useState('')
   const [mobileView, setMobileView] = useState<'list' | 'chat'>('list')
   const [liveAgentSessions, setLiveAgentSessions] = useState<Set<string>>(new Set())
+  const [liveProcessAgentIds, setLiveProcessAgentIds] = useState<string[]>([])
   // Tracks in-progress stream content received via SSE (used when reconnecting
   // to a conversation that has an active stream from another tab/prior navigation)
   const [pendingStream, setPendingStream] = useState<PendingStream | null>(null)
@@ -209,12 +211,17 @@ export default function ChatPage() {
       if (!res.ok) return
       const data: AgentInfo[] = await res.json()
       const next = new Set<string>()
+      const processIds: string[] = []
       for (const agent of data) {
         if (agent.status === 'running' || agent.status === 'idle') {
           next.add(agent.id)
+          if (agent.source === 'process') {
+            processIds.push(agent.id)
+          }
         }
       }
       setLiveAgentSessions(next)
+      setLiveProcessAgentIds(processIds)
     } catch (err) {
       console.warn('[navi-chat] failed to refresh agents:', err)
     }
@@ -682,6 +689,7 @@ export default function ChatPage() {
           onDelete={handleDeleteConversation}
           onRename={handleRenameConversation}
           liveAgentSessions={liveAgentSessions}
+          liveProcessAgentIds={liveProcessAgentIds}
         />
       </div>
 
@@ -697,6 +705,7 @@ export default function ChatPage() {
             onDelete={handleDeleteConversation}
             onRename={handleRenameConversation}
             liveAgentSessions={liveAgentSessions}
+            liveProcessAgentIds={liveProcessAgentIds}
           />
         </SheetContent>
       </Sheet>

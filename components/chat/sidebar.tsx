@@ -120,6 +120,7 @@ interface SidebarProps {
   onDelete: (id: string) => void
   onRename: (id: string, title: string) => void
   liveAgentSessions: Set<string>
+  liveProcessAgentIds: string[]
 }
 
 export function Sidebar({
@@ -130,6 +131,7 @@ export function Sidebar({
   onDelete,
   onRename,
   liveAgentSessions,
+  liveProcessAgentIds,
 }: SidebarProps) {
   const [search, setSearch] = useState('')
   const [pendingDeleteIds, setPendingDeleteIds] = useState<Set<string>>(
@@ -384,6 +386,7 @@ export function Sidebar({
                               isFocused={flatIdx === focusedIndex}
                               isEditing={conv.id === editingId}
                               liveAgentSessions={liveAgentSessions}
+                              liveProcessAgentIds={liveProcessAgentIds}
                               onSelect={() => onSelect(conv.id)}
                               onDelete={() =>
                                 handleDeleteRequest(conv.id, conv.title)
@@ -446,6 +449,7 @@ function ConversationItem({
   isFocused,
   isEditing,
   liveAgentSessions,
+  liveProcessAgentIds,
   onSelect,
   onDelete,
   onStartRename,
@@ -457,6 +461,7 @@ function ConversationItem({
   isFocused: boolean
   isEditing: boolean
   liveAgentSessions: Set<string>
+  liveProcessAgentIds: string[]
   onSelect: () => void
   onDelete: () => void
   onStartRename: () => void
@@ -517,6 +522,10 @@ function ConversationItem({
   }
 
   const timeLabel = timeAgo(conversation.updatedAt)
+  const hasSessionMatch = !!conversation.sessionId && liveAgentSessions.has(conversation.sessionId)
+  const processFallbackId = liveProcessAgentIds[0]
+  const botTargetId = hasSessionMatch ? conversation.sessionId : processFallbackId
+  const showBotButton = hasSessionMatch || liveProcessAgentIds.length > 0
 
   return (
     <div
@@ -574,13 +583,13 @@ function ConversationItem({
           so they don't get clipped by the ScrollArea viewport/scrollbar.
           group-focus-within ensures buttons stay visible when any has focus. */}
       <div className="flex w-full shrink-0 items-center justify-end gap-0.5 px-2 pb-2 pr-2 opacity-100 transition-opacity sm:w-auto sm:justify-start sm:px-0 sm:pb-0 sm:pr-1.5 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100">
-        {conversation.sessionId && liveAgentSessions.has(conversation.sessionId) && (
+        {showBotButton && botTargetId && (
           <Tooltip>
             <TooltipTrigger asChild>
               <button
                 onClick={(e) => {
                   e.stopPropagation()
-                  router.push(`/agents?agentId=${conversation.sessionId}`)
+                  router.push(`/agents?agentId=${botTargetId}`)
                 }}
                 aria-label={`View agent for ${conversation.title}`}
                 className="flex min-h-[44px] min-w-[44px] items-center justify-center rounded text-zinc-500 transition-colors hover:bg-zinc-700 hover:text-zinc-300 focus-ring md:min-h-0 md:min-w-0 md:p-1.5"
