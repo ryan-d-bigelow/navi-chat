@@ -3,6 +3,10 @@ import { createOpenAI } from '@ai-sdk/openai'
 import { z } from 'zod'
 import { broadcast } from '@/lib/sse'
 import { startStream, appendStreamChunk, finishStream } from '@/lib/streaming-buffer'
+import { updateConversationSessionId } from '@/lib/db'
+import { readFileSync, existsSync } from 'fs'
+import { homedir } from 'os'
+import path from 'path'
 
 const GATEWAY_URL = 'http://127.0.0.1:18789'
 const GATEWAY_TOKEN = '0793b4b96017e58f189b26117aa1e9a3258131b73482cdb8'
@@ -11,6 +15,25 @@ const openclaw = createOpenAI({
   baseURL: `${GATEWAY_URL}/v1`,
   apiKey: GATEWAY_TOKEN,
 })
+
+function findLatestOpenAISession(): string | null {
+  const sessionsPath = path.join(homedir(), '.openclaw/agents/main/sessions/sessions.json')
+  if (!existsSync(sessionsPath)) return null
+  try {
+    const raw = readFileSync(sessionsPath, 'utf-8')
+    const sessions = JSON.parse(raw) as Record<string, { sessionId: string; updatedAt: number }>
+    let latest: { sessionId: string; updatedAt: number } | null = null
+    for (const [key, session] of Object.entries(sessions)) {
+      if (!key.startsWith('agent:main:openai:')) continue
+      if (!latest || session.updatedAt > latest.updatedAt) {
+        latest = session
+      }
+    }
+    return latest?.sessionId ?? null
+  } catch {
+    return null
+  }
+}
 
 type MessagePart = { type: string; text?: string }
 type InboundMessage = {
@@ -105,6 +128,18 @@ export async function POST(req: Request) {
     onFinish: () => {
       if (conversationId) {
         finishStream(conversationId)
+        // Give OpenClaw a moment to flush session state, then link the session
+        const capturedConversationId = conversationId
+        setTimeout(() => {
+          const sessionId = findLatestOpenAISession()
+          if (sessionId) {
+            updateConversationSessionId(capturedConversationId, sessionId)
+            broadcast({
+              type: 'conversation_session_linked',
+              payload: { conversation_id: capturedConversationId, session_id: sessionId },
+            })
+          }
+        }, 500)
       }
     },
     onError: () => {

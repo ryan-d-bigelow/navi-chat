@@ -4,9 +4,9 @@ import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Separator } from '@/components/ui/separator'
 import type { Conversation } from '@/lib/types'
-import { MessageSquare, MessageSquarePlus, Terminal, Trash2 } from 'lucide-react'
+import { Bot, MessageSquare, MessageSquarePlus, Terminal, Trash2 } from 'lucide-react'
 import Link from 'next/link'
-import { usePathname } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
 
 interface SidebarProps {
   conversations: Conversation[]
@@ -121,6 +121,8 @@ function ConversationItem({
   onSelect: () => void
   onDelete: () => void
 }) {
+  const router = useRouter()
+
   return (
     <div
       className={`group relative mb-0.5 flex w-full items-center rounded-lg text-left text-sm transition-colors ${
@@ -140,6 +142,19 @@ function ConversationItem({
           {timeAgo(conversation.updatedAt)}
         </p>
       </button>
+      {conversation.sessionId && (
+        <button
+          onClick={(e) => {
+            e.stopPropagation()
+            router.push(`/agents?agentId=${conversation.sessionId}`)
+          }}
+          aria-label={`View agent for ${conversation.title}`}
+          title="View agent"
+          className="ml-1 shrink-0 rounded p-2 text-zinc-500 opacity-0 transition-opacity hover:bg-zinc-700 hover:text-zinc-300 focus-visible:opacity-100 focus-ring group-hover:opacity-100"
+        >
+          <Bot className="h-3.5 w-3.5" aria-hidden="true" />
+        </button>
+      )}
       <button
         onClick={(e) => {
           e.stopPropagation()

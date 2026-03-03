@@ -6,6 +6,7 @@ interface ApiConversation {
   created_at: number
   updated_at: number
   last_message_preview: string | null
+  openclaw_session_id: string | null
 }
 
 function toConversation(api: ApiConversation, messages: ChatMessage[] = []): Conversation {
@@ -15,6 +16,7 @@ function toConversation(api: ApiConversation, messages: ChatMessage[] = []): Con
     messages,
     createdAt: api.created_at,
     updatedAt: api.updated_at,
+    sessionId: api.openclaw_session_id ?? undefined,
   }
 }
 

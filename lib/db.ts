@@ -18,7 +18,8 @@ function getDb(): Database.Database {
         id TEXT PRIMARY KEY,
         title TEXT NOT NULL,
         created_at INTEGER NOT NULL,
-        updated_at INTEGER NOT NULL
+        updated_at INTEGER NOT NULL,
+        openclaw_session_id TEXT
       );
       CREATE TABLE IF NOT EXISTS navi_chat_messages (
         id TEXT PRIMARY KEY,
@@ -28,6 +29,12 @@ function getDb(): Database.Database {
         timestamp INTEGER NOT NULL
       );
     `)
+    // Migration: add openclaw_session_id to existing DBs (SQLite doesn't support IF NOT EXISTS for columns)
+    try {
+      _db.exec(`ALTER TABLE navi_chat_conversations ADD COLUMN openclaw_session_id TEXT`)
+    } catch {
+      // Column already exists — ignore
+    }
   }
   return _db
 }
@@ -49,13 +56,14 @@ export interface DbMessage {
 
 export interface ConversationWithPreview extends DbConversation {
   last_message_preview: string | null
+  openclaw_session_id: string | null
 }
 
 export function listConversations(): ConversationWithPreview[] {
   const db = getDb()
   return db
     .prepare(
-      `SELECT c.*, (
+      `SELECT c.id, c.title, c.created_at, c.updated_at, c.openclaw_session_id, (
         SELECT substr(m.content, 1, 80)
         FROM navi_chat_messages m
         WHERE m.conversation_id = c.id
@@ -110,4 +118,15 @@ export function updateConversationTitle(id: string, title: string): void {
   db.prepare(
     'UPDATE navi_chat_conversations SET title = ?, updated_at = ? WHERE id = ?'
   ).run(title, Date.now(), id)
+}
+
+export function updateConversationSessionId(id: string, sessionId: string): void {
+  const db = getDb()
+  db.prepare('UPDATE navi_chat_conversations SET openclaw_session_id = ? WHERE id = ?').run(sessionId, id)
+}
+
+export function getConversationSessionId(id: string): string | null {
+  const db = getDb()
+  const row = db.prepare('SELECT openclaw_session_id FROM navi_chat_conversations WHERE id = ?').get(id) as { openclaw_session_id: string | null } | undefined
+  return row?.openclaw_session_id ?? null
 }

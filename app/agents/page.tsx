@@ -19,7 +19,8 @@ import {
   WifiOff,
   Zap,
 } from 'lucide-react'
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, Suspense } from 'react'
+import { useSearchParams } from 'next/navigation'
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -568,8 +569,19 @@ function AgentGroup({
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function AgentsPage() {
+  return (
+    <Suspense fallback={null}>
+      <AgentsPageInner />
+    </Suspense>
+  )
+}
+
+function AgentsPageInner() {
+  const searchParams = useSearchParams()
+  const initialAgentId = searchParams.get('agentId')
+
   const [agents, setAgents] = useState<AgentInfo[]>([])
-  const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [selectedId, setSelectedId] = useState<string | null>(initialAgentId)
   const [loading, setLoading] = useState(true)
   const [now, setNow] = useState(Date.now())
 
@@ -581,9 +593,13 @@ export default function AgentsPage() {
       if (res.ok) {
         const data: AgentInfo[] = await res.json()
         setAgents(data)
-        // Auto-select first agent if none selected
+        // Auto-select: prefer initialAgentId if it exists in the list, else first agent
         setSelectedId((prev) => {
           if (prev) return prev
+          if (initialAgentId) {
+            const found = data.find((a) => a.id === initialAgentId)
+            if (found) return found.id
+          }
           return data[0]?.id ?? null
         })
       }
@@ -592,7 +608,7 @@ export default function AgentsPage() {
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [initialAgentId])
 
   useEffect(() => {
     fetchAgents()

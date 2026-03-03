@@ -15,4 +15,5 @@ export interface Conversation {
   messages: ChatMessage[]
   createdAt: number
   updatedAt: number
+  sessionId?: string
 }

@@ -207,6 +207,16 @@ export default function ChatPage() {
             })
             break
           }
+
+          case 'conversation_session_linked': {
+            const payload = syncEvent.payload as { conversation_id: string; session_id: string }
+            setConversations((prev) =>
+              prev.map((c) =>
+                c.id === payload.conversation_id ? { ...c, sessionId: payload.session_id } : c
+              )
+            )
+            break
+          }
         }
       } catch {
         // ignore parse errors
