@@ -9,6 +9,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
+import { SystemStatusPanel } from '@/components/system/system-status-panel'
 import type { Conversation } from '@/lib/types'
 import {
   Bot,
@@ -325,6 +326,7 @@ export function Sidebar({
           </ul>
         )}
       </ScrollArea>
+      <SystemStatusPanel />
     </nav>
   )
 }
