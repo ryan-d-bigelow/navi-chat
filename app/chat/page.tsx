@@ -57,6 +57,12 @@ const SPLIT_MIN = 0.45
 const SPLIT_MAX = 0.8
 const DEFAULT_SPLIT_RATIO = 0.64
 
+const LINEAR_RATIO_KEY = 'navi.chat.linearRatio'
+const LINEAR_MIN = 0.12
+const LINEAR_MAX = 0.35
+const DEFAULT_LINEAR_RATIO = 0.2
+const MIN_CHAT_FRACTION = 0.25
+
 function getTextContent(message: UIMessage): string {
   const parts = message.parts ?? []
   const fromParts = parts
@@ -183,6 +189,7 @@ function ChatPageInner() {
   const [linearOpen, setLinearOpen] = useState(false)
   const [logsOpen, setLogsOpen] = useState(true)
   const [splitRatio, setSplitRatio] = useState(DEFAULT_SPLIT_RATIO)
+  const [linearRatio, setLinearRatio] = useState(DEFAULT_LINEAR_RATIO)
   const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null)
   const [agents, setAgents] = useState<AgentInfo[]>([])
   const [isDesktop, setIsDesktop] = useState(true)
@@ -201,6 +208,15 @@ function ChatPageInner() {
   const scrollRef = useRef<HTMLDivElement>(null)
   const splitRef = useRef<HTMLDivElement>(null)
   const draggingRef = useRef(false)
+  const activeHandleRef = useRef<'left' | 'right' | null>(null)
+  const linearRatioRef = useRef(linearRatio)
+  linearRatioRef.current = linearRatio
+  const splitRatioRef = useRef(splitRatio)
+  splitRatioRef.current = splitRatio
+  const linearOpenRef = useRef(linearOpen)
+  linearOpenRef.current = linearOpen
+  const logsOpenRef = useRef(logsOpen)
+  logsOpenRef.current = logsOpen
   const activeIdRef = useRef<string | null>(null)
   const initialConversationBootstrappedRef = useRef(false)
   // Captures the session ID at request time so onFinish saves to the
@@ -235,6 +251,22 @@ function ChatPageInner() {
     window.localStorage.setItem(SPLIT_RATIO_KEY, String(splitRatio))
   }, [splitRatio])
 
+  // Load linear panel ratio from localStorage
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const stored = window.localStorage.getItem(LINEAR_RATIO_KEY)
+    if (!stored) return
+    const next = Number.parseFloat(stored)
+    if (!Number.isFinite(next)) return
+    setLinearRatio(Math.min(LINEAR_MAX, Math.max(LINEAR_MIN, next)))
+  }, [])
+
+  // Persist linear panel ratio
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    window.localStorage.setItem(LINEAR_RATIO_KEY, String(linearRatio))
+  }, [linearRatio])
+
   useEffect(() => {
     if (typeof window === 'undefined') return
     const media = window.matchMedia('(min-width: 768px)')
@@ -260,13 +292,25 @@ function ChatPageInner() {
       const container = splitRef.current
       if (!container) return
       const rect = container.getBoundingClientRect()
-      const next = (event.clientX - rect.left) / rect.width
-      const clamped = Math.min(SPLIT_MAX, Math.max(SPLIT_MIN, next))
-      setSplitRatio(clamped)
+      const pos = (event.clientX - rect.left) / rect.width
+
+      if (activeHandleRef.current === 'left') {
+        let max = LINEAR_MAX
+        if (logsOpenRef.current) max = Math.min(max, splitRatioRef.current - MIN_CHAT_FRACTION)
+        else max = Math.min(max, 1 - MIN_CHAT_FRACTION)
+        const clamped = Math.min(max, Math.max(LINEAR_MIN, pos))
+        setLinearRatio(clamped)
+      } else {
+        let min = SPLIT_MIN
+        if (linearOpenRef.current) min = Math.max(min, linearRatioRef.current + MIN_CHAT_FRACTION)
+        const clamped = Math.min(SPLIT_MAX, Math.max(min, pos))
+        setSplitRatio(clamped)
+      }
     }
     const handleUp = () => {
       if (!draggingRef.current) return
       draggingRef.current = false
+      activeHandleRef.current = null
       setIsDragging(false)
       document.body.style.cursor = ''
       document.body.style.userSelect = ''
@@ -329,7 +373,29 @@ function ChatPageInner() {
   )
   const showChatPanel = isDesktop || mobilePanel === 'chat'
   const showLogsPanel = (isDesktop && logsOpen) || (!isDesktop && mobilePanel === 'logs')
+  const showLinearPanel = isDesktop && linearOpen
   const logsToggleActive = isDesktop ? logsOpen : mobilePanel === 'logs'
+
+  // Compute panel width styles for desktop three-panel layout
+  const chatWidthStyle: React.CSSProperties | undefined = useMemo(() => {
+    if (!isDesktop) return undefined
+    if (linearOpen && logsOpen) return { width: `${(splitRatio - linearRatio) * 100}%` }
+    if (logsOpen) return { width: `${splitRatio * 100}%` }
+    if (linearOpen) return { width: `${(1 - linearRatio) * 100}%` }
+    return undefined
+  }, [isDesktop, linearOpen, logsOpen, splitRatio, linearRatio])
+
+  const linearWidthStyle: React.CSSProperties | undefined = useMemo(() => {
+    if (!isDesktop || !linearOpen) return undefined
+    return { width: `${linearRatio * 100}%` }
+  }, [isDesktop, linearOpen, linearRatio])
+
+  const logsWidthStyle: React.CSSProperties | undefined = useMemo(() => {
+    if (!isDesktop || !logsOpen) return undefined
+    return { width: `${(1 - splitRatio) * 100}%` }
+  }, [isDesktop, logsOpen, splitRatio])
+
+  const hasSidePanels = isDesktop && (linearOpen || logsOpen)
 
   // Stable transport — body callback reads activeIdRef at request time, not during render
   // eslint-disable-next-line react-hooks/refs
@@ -777,12 +843,23 @@ function ChatPageInner() {
 
   const startResize = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
     if (!logsOpen || !isDesktop) return
+    activeHandleRef.current = 'right'
     draggingRef.current = true
     setIsDragging(true)
     event.currentTarget.setPointerCapture(event.pointerId)
     document.body.style.cursor = 'col-resize'
     document.body.style.userSelect = 'none'
   }, [isDesktop, logsOpen])
+
+  const startLeftResize = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    if (!linearOpen || !isDesktop) return
+    activeHandleRef.current = 'left'
+    draggingRef.current = true
+    setIsDragging(true)
+    event.currentTarget.setPointerCapture(event.pointerId)
+    document.body.style.cursor = 'col-resize'
+    document.body.style.userSelect = 'none'
+  }, [isDesktop, linearOpen])
 
   const handleSeparatorKeyDown = useCallback((event: React.KeyboardEvent<HTMLDivElement>) => {
     if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return
@@ -791,11 +868,17 @@ function ChatPageInner() {
     setSplitRatio((prev) => Math.min(SPLIT_MAX, Math.max(SPLIT_MIN, prev + delta)))
   }, [])
 
+  const handleLeftSeparatorKeyDown = useCallback((event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return
+    event.preventDefault()
+    const delta = event.key === 'ArrowLeft' ? -0.02 : 0.02
+    setLinearRatio((prev) => Math.min(LINEAR_MAX, Math.max(LINEAR_MIN, prev + delta)))
+  }, [])
+
   const handleAgentSelect = useCallback((agentId: string) => {
     setSelectedAgentId(agentId)
     if (isDesktop) {
       setLogsOpen(true)
-      setLinearOpen(false)
     } else {
       setMobilePanel('logs')
     }
@@ -1011,11 +1094,41 @@ function ChatPageInner() {
           </div>
         )}
         <div ref={splitRef} className="flex min-h-0 flex-1 flex-col md:flex-row">
+          {/* Linear tasks panel — desktop only, inside split container */}
+          {showLinearPanel && (
+            <div
+              className="hidden min-w-[200px] flex-none md:flex"
+              style={linearWidthStyle}
+            >
+              <LinearPanel onClose={() => setLinearOpen(false)} />
+            </div>
+          )}
+
+          {/* Left resize handle — between tasks and chat */}
+          {showLinearPanel && (
+            <div
+              role="separator"
+              aria-orientation="vertical"
+              aria-label="Resize tasks and chat"
+              aria-valuemin={Math.round(LINEAR_MIN * 100)}
+              aria-valuemax={Math.round(LINEAR_MAX * 100)}
+              aria-valuenow={Math.round(linearRatio * 100)}
+              tabIndex={0}
+              onKeyDown={handleLeftSeparatorKeyDown}
+              onPointerDown={startLeftResize}
+              className={`group relative hidden w-2 cursor-col-resize items-center justify-center bg-zinc-900 md:flex ${
+                isDragging && activeHandleRef.current === 'left' ? 'bg-zinc-800' : 'hover:bg-zinc-800/80'
+              }`}
+            >
+              <span className="absolute left-1/2 top-1/2 h-10 w-[2px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-zinc-700/80 group-hover:bg-zinc-500/80" />
+            </div>
+          )}
+
           {/* Chat panel */}
           {showChatPanel && (
             <section
-              className={`flex min-h-0 flex-col ${isDesktop && logsOpen ? 'flex-none' : 'flex-1'} min-w-[320px]`}
-              style={isDesktop && logsOpen ? { width: `${splitRatio * 100}%` } : undefined}
+              className={`flex min-h-0 flex-col ${hasSidePanels ? 'flex-none min-w-[280px]' : 'flex-1 min-w-[320px]'}`}
+              style={chatWidthStyle}
             >
             {/* Header */}
             <header className="glass-subtle flex items-center gap-3 border-b border-zinc-800/60 px-3 py-3 sm:px-4">
@@ -1050,11 +1163,7 @@ function ChatPageInner() {
                     setMobilePanel('logs')
                     return
                   }
-                  setLogsOpen((v) => {
-                    const next = !v
-                    if (next) setLinearOpen(false)
-                    return next
-                  })
+                  setLogsOpen((v) => !v)
                 }}
                 aria-label={logsToggleActive ? 'Hide agent logs panel' : 'Show agent logs panel'}
                 aria-pressed={logsToggleActive}
@@ -1067,13 +1176,7 @@ function ChatPageInner() {
                 <Terminal className="h-4 w-4" aria-hidden="true" />
               </button>
               <button
-                onClick={() =>
-                  setLinearOpen((v) => {
-                    const next = !v
-                    if (next) setLogsOpen(false)
-                    return next
-                  })
-                }
+                onClick={() => setLinearOpen((v) => !v)}
                 aria-label={linearOpen ? 'Hide Linear tasks panel' : 'Show Linear tasks panel'}
                 aria-pressed={linearOpen}
                 className={`hidden min-h-[44px] min-w-[44px] items-center justify-center rounded-lg transition-colors focus-ring md:flex ${
@@ -1119,7 +1222,7 @@ function ChatPageInner() {
           </section>
           )}
 
-          {/* Resize handle */}
+          {/* Right resize handle — between chat and logs */}
           {logsOpen && isDesktop && (
             <div
               role="separator"
@@ -1132,7 +1235,7 @@ function ChatPageInner() {
               onKeyDown={handleSeparatorKeyDown}
               onPointerDown={startResize}
               className={`group relative hidden w-2 cursor-col-resize items-center justify-center bg-zinc-900 md:flex ${
-                isDragging ? 'bg-zinc-800' : 'hover:bg-zinc-800/80'
+                isDragging && activeHandleRef.current === 'right' ? 'bg-zinc-800' : 'hover:bg-zinc-800/80'
               }`}
             >
               <span className="absolute left-1/2 top-1/2 h-10 w-[2px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-zinc-700/80 group-hover:bg-zinc-500/80" />
@@ -1142,10 +1245,10 @@ function ChatPageInner() {
           {/* Logs panel */}
           {showLogsPanel && (
             <aside
-              className={`flex min-h-0 flex-col border-t border-zinc-800/60 bg-zinc-950 md:border-t-0 md:border-l ${
-                isDesktop ? 'min-w-[320px]' : 'flex-1 w-full'
+              className={`flex min-h-0 flex-col border-t border-zinc-800/60 bg-zinc-950 md:border-t-0 ${
+                isDesktop ? 'min-w-[240px] flex-none' : 'flex-1 w-full'
               }`}
-              style={isDesktop && logsOpen ? { width: `${(1 - splitRatio) * 100}%` } : undefined}
+              style={logsWidthStyle}
             >
               <header className="flex items-center justify-between gap-2 border-b border-zinc-800/60 bg-zinc-950/80 px-3 py-2.5">
                 <div className="min-w-0">
@@ -1188,13 +1291,6 @@ function ChatPageInner() {
           )}
         </div>
       </div>
-
-      {/* Linear task panel — desktop only */}
-      {linearOpen && !logsOpen && (
-        <div className="hidden md:flex">
-          <LinearPanel onClose={() => setLinearOpen(false)} />
-        </div>
-      )}
 
       {/* Bottom nav — only show in chat view on mobile (list view has its own) */}
       <div className={`${mobileView === 'chat' ? 'block' : 'hidden'} md:block`}>
