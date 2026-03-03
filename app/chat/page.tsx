@@ -504,7 +504,7 @@ export default function ChatPage() {
         </header>
 
         {/* Messages */}
-        <ScrollArea className="flex-1" viewportRef={scrollRef}>
+        <ScrollArea className="min-h-0 flex-1" viewportRef={scrollRef}>
           <div className="mx-auto max-w-3xl px-4 py-6 sm:px-6">
             <MessageList messages={displayMessages} isLoading={isStreaming || isPendingStream} />
           </div>

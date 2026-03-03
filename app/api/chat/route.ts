@@ -1,6 +1,8 @@
 import { streamText, stepCountIs } from 'ai'
 import { createOpenAI } from '@ai-sdk/openai'
 import { z } from 'zod'
+import { broadcast } from '@/lib/sse'
+import { startStream, appendStreamChunk, finishStream } from '@/lib/streaming-buffer'
 
 const GATEWAY_URL = 'http://127.0.0.1:18789'
 const GATEWAY_TOKEN = '0793b4b96017e58f189b26117aa1e9a3258131b73482cdb8'
@@ -35,13 +37,22 @@ function extractText(msg: InboundMessage): string {
 }
 
 export async function POST(req: Request) {
-  const { messages } = await req.json()
+  const body = await req.json()
+  const { messages, conversationId } = body as {
+    messages: InboundMessage[]
+    conversationId?: string
+  }
 
   // Normalize to simple CoreMessage format that streamText always accepts
   const coreMessages = (messages as InboundMessage[])
     .filter(m => ['user', 'assistant', 'system'].includes(m.role))
     .map(m => ({ role: m.role, content: extractText(m) }))
     .filter(m => m.content.length > 0)
+
+  // Start buffering if we have a conversationId to key on
+  if (conversationId) {
+    startStream(conversationId)
+  }
 
   const result = streamText({
     model: openclaw.chat('agent:main'),
@@ -70,11 +81,38 @@ export async function POST(req: Request) {
             .describe('Title for the canvas panel header'),
         }),
         // Canvas tool is client-side — result is forwarded to the UI for rendering.
-        // The execute stub lets the type checker pass; actual canvas rendering happens in the frontend.
         execute: async (args: { action: string; content?: string; url?: string; title?: string }) => args,
       },
     },
     stopWhen: stepCountIs(3),
+    // Tap each text chunk to buffer + broadcast via SSE so reconnecting clients
+    // can see in-progress tokens.
+    onChunk: ({ chunk }) => {
+      if (!conversationId) return
+      if (chunk.type === 'text-delta') {
+        // AI SDK v6: text-delta chunk uses `.text` (not `.textDelta`)
+        const delta = (chunk as { type: 'text-delta'; text: string }).text
+        appendStreamChunk(conversationId, delta)
+        broadcast({
+          type: 'message_streaming',
+          payload: {
+            conversation_id: conversationId,
+            delta,
+          },
+        })
+      }
+    },
+    onFinish: () => {
+      if (conversationId) {
+        finishStream(conversationId)
+      }
+    },
+    onError: () => {
+      if (conversationId) {
+        finishStream(conversationId)
+      }
+    },
   })
+
   return result.toUIMessageStreamResponse()
 }

@@ -5,6 +5,7 @@ export const dynamic = 'force-dynamic'
 export async function GET() {
   const stream = new ReadableStream<Uint8Array>({
     start(controller) {
+      // addClient also replays any active stream states to this new subscriber
       addClient(controller)
       // Send initial keepalive
       controller.enqueue(new TextEncoder().encode(': connected\n\n'))
