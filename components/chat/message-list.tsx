@@ -8,9 +8,16 @@ interface MessageListProps {
   messages: UIMessage[]
   isLoading: boolean
   isThinking: boolean
+  thinkingText?: string | null
 }
 
-function ThinkingBubble() {
+function ThinkingBubble({ thinkingText }: { thinkingText?: string | null }) {
+  const trimmedText = thinkingText?.trim()
+  const displayText =
+    trimmedText && trimmedText.length > 100
+      ? `${trimmedText.slice(0, 100).trimEnd()}…`
+      : trimmedText
+
   return (
     <article aria-label="Navi is thinking" className="animate-fade-in">
       <div className="flex gap-3">
@@ -19,18 +26,27 @@ function ThinkingBubble() {
             <span role="img" aria-label="Navi">🧚</span>
           </AvatarFallback>
         </Avatar>
-        <div className="flex items-center gap-1 pt-1.5">
-          <span className="h-2 w-2 animate-bounce rounded-full bg-zinc-500 [animation-delay:0ms]" />
-          <span className="h-2 w-2 animate-bounce rounded-full bg-zinc-500 [animation-delay:150ms]" />
-          <span className="h-2 w-2 animate-bounce rounded-full bg-zinc-500 [animation-delay:300ms]" />
-          <span className="sr-only">Navi is thinking...</span>
-        </div>
+        {displayText ? (
+          <div className="flex items-start gap-2 pt-0.5 text-xs text-zinc-500 italic transition-opacity duration-200">
+            <span aria-hidden="true">🧠</span>
+            <span key={displayText} className="line-clamp-2 max-w-[80%] animate-fade-in">
+              {displayText}
+            </span>
+          </div>
+        ) : (
+          <div className="flex items-center gap-1 pt-1.5">
+            <span className="h-2 w-2 animate-bounce rounded-full bg-zinc-500 [animation-delay:0ms]" />
+            <span className="h-2 w-2 animate-bounce rounded-full bg-zinc-500 [animation-delay:150ms]" />
+            <span className="h-2 w-2 animate-bounce rounded-full bg-zinc-500 [animation-delay:300ms]" />
+            <span className="sr-only">Navi is thinking...</span>
+          </div>
+        )}
       </div>
     </article>
   )
 }
 
-export function MessageList({ messages, isLoading, isThinking }: MessageListProps) {
+export function MessageList({ messages, isLoading, isThinking, thinkingText }: MessageListProps) {
   if (messages.length === 0 && !isThinking) {
     return (
       <div
@@ -63,7 +79,7 @@ export function MessageList({ messages, isLoading, isThinking }: MessageListProp
           }
         />
       ))}
-      {isThinking && <ThinkingBubble />}
+      {isThinking && <ThinkingBubble thinkingText={thinkingText} />}
       {isLoading && (
         <div role="status" aria-live="assertive" className="sr-only">
           Navi is responding...

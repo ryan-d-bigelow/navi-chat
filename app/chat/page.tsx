@@ -28,10 +28,11 @@ import {
 import type { CanvasState } from '@/lib/canvas'
 import type { Conversation, ChatMessage } from '@/lib/types'
 import type { SyncEvent } from '@/lib/sse'
+import { useMobileNav } from '@/app/context/mobile-nav-context'
 import { useChat } from '@ai-sdk/react'
 import { DefaultChatTransport } from 'ai'
 import type { UIMessage } from 'ai'
-import { LayoutList, Menu, PanelRight } from 'lucide-react'
+import { LayoutList, Menu, MessageSquare, PanelRight, Plus } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 // Stable ref accessor extracted outside render to satisfy react-hooks/refs.
@@ -48,6 +49,9 @@ interface PendingStream {
   content: string
 }
 
+type ReasoningPart = { type: 'reasoning'; reasoning?: string; text?: string }
+type ToolCallPart = { type: 'tool-call'; toolName?: string; name?: string }
+
 function getTextContent(message: UIMessage): string {
   return message.parts
     .filter((p): p is { type: 'text'; text: string } => p.type === 'text')
@@ -63,6 +67,90 @@ function toUIMessages(messages: ChatMessage[]): UIMessage[] {
   }))
 }
 
+function timeAgo(ts: number): string {
+  const diff = Date.now() - ts
+  const seconds = Math.floor(diff / 1000)
+  if (seconds < 60) return 'just now'
+  const minutes = Math.floor(seconds / 60)
+  if (minutes < 60) return `${minutes}m ago`
+  const hours = Math.floor(minutes / 60)
+  if (hours < 24) return `${hours}h ago`
+  const days = Math.floor(hours / 24)
+  return `${days}d ago`
+}
+
+// ─── Mobile conversation list ────────────────────────────────────────────────
+
+function MobileConversationList({
+  conversations,
+  onSelect,
+  onNew,
+}: {
+  conversations: Conversation[]
+  onSelect: (id: string) => void
+  onNew: () => void
+}) {
+  return (
+    <div className="flex h-full flex-col bg-zinc-950">
+      {/* Header */}
+      <header className="flex shrink-0 items-center gap-3 border-b border-zinc-800/60 px-4 py-3">
+        <span className="text-lg" role="img" aria-label="Navi">🧚</span>
+        <h1 className="text-sm font-semibold tracking-tight text-zinc-200">Navi Chat</h1>
+        <div className="flex-1" />
+        <button
+          onClick={onNew}
+          aria-label="New chat"
+          className="flex min-h-[44px] min-w-[44px] items-center justify-center rounded-lg bg-emerald-500/10 text-emerald-400 transition-colors hover:bg-emerald-500/20 focus-ring"
+        >
+          <Plus className="h-5 w-5" aria-hidden="true" />
+        </button>
+      </header>
+
+      {/* Conversation list */}
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        {conversations.length === 0 ? (
+          <div className="flex flex-col items-center justify-center gap-3 px-6 py-20 text-center">
+            <div className="flex h-14 w-14 items-center justify-center rounded-2xl border border-zinc-800 bg-zinc-900">
+              <MessageSquare className="h-6 w-6 text-zinc-700" aria-hidden="true" />
+            </div>
+            <p className="text-sm font-medium text-zinc-400">No conversations yet</p>
+            <p className="text-xs text-zinc-600">Tap the + button to start chatting</p>
+          </div>
+        ) : (
+          <div className="flex flex-col py-2">
+            {conversations.map((conv) => {
+              const lastMsg = conv.messages.at(-1)
+              const preview = lastMsg?.content.slice(0, 80) ?? 'No messages yet'
+              return (
+                <button
+                  key={conv.id}
+                  type="button"
+                  onClick={() => onSelect(conv.id)}
+                  className="flex min-h-[68px] flex-col gap-1 border-b border-zinc-800/40 px-4 py-3 text-left transition-colors hover:bg-zinc-900/80 active:bg-zinc-800/60 focus-ring"
+                >
+                  <div className="flex items-center gap-2">
+                    <span className="flex-1 truncate text-sm font-medium text-zinc-200">
+                      {conv.title}
+                    </span>
+                    <span className="shrink-0 text-[10px] text-zinc-600">
+                      {timeAgo(conv.updatedAt)}
+                    </span>
+                  </div>
+                  <p className="line-clamp-1 text-xs text-zinc-500">
+                    {lastMsg ? preview : 'No messages yet'}
+                  </p>
+                </button>
+              )
+            })}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ─── Page ────────────────────────────────────────────────────────────────────
+
 export default function ChatPage() {
   const [conversations, setConversations] = useState<Conversation[]>([])
   const [activeId, setActiveId] = useState<string | null>(null)
@@ -70,15 +158,29 @@ export default function ChatPage() {
   const [linearOpen, setLinearOpen] = useState(true)
   const [canvas, setCanvas] = useState<CanvasState>(CANVAS_INITIAL)
   const [input, setInput] = useState('')
+  const [mobileView, setMobileView] = useState<'list' | 'chat'>('list')
   // Tracks in-progress stream content received via SSE (used when reconnecting
   // to a conversation that has an active stream from another tab/prior navigation)
   const [pendingStream, setPendingStream] = useState<PendingStream | null>(null)
+  const [thinkingText, setThinkingText] = useState<string | null>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
   const activeIdRef = useRef<string | null>(null)
   // Captures the session ID at request time so onFinish saves to the
   // originating session even if the user switches sessions mid-stream.
   const requestSessionIdRef = useRef<string | null>(null)
   const canvasCommandCountRef = useRef(0)
+
+  // Mobile back-action: when viewing a chat, register a back action to go back to list
+  const { registerChatBack } = useMobileNav()
+
+  useEffect(() => {
+    if (mobileView === 'chat') {
+      registerChatBack(() => setMobileView('list'))
+    } else {
+      registerChatBack(null)
+    }
+    return () => registerChatBack(null)
+  }, [mobileView, registerChatBack])
 
   // Keep ref in sync for use in callbacks
   useEffect(() => {
@@ -209,6 +311,17 @@ export default function ChatPage() {
             break
           }
 
+          case 'thinking_update': {
+            const payload = syncEvent.payload as {
+              conversation_id: string
+              text: string
+            }
+            if (payload.conversation_id === activeIdRef.current) {
+              setThinkingText(payload.text)
+            }
+            break
+          }
+
           case 'conversation_session_linked': {
             const payload = syncEvent.payload as { conversation_id: string; session_id: string }
             setConversations((prev) =>
@@ -273,7 +386,6 @@ export default function ChatPage() {
   })
 
   const isStreaming = status === 'streaming' || status === 'submitted'
-  const isThinking = status === 'submitted'
 
   // When not actively streaming via useChat (e.g. after navigating away and
   // back), show accumulated SSE tokens as a placeholder assistant message so
@@ -297,6 +409,43 @@ export default function ChatPage() {
 
   // True when we're showing a live-updating placeholder from SSE
   const isPendingStream = !isStreaming && pendingStream?.conversationId === activeId && (pendingStream?.content.length ?? 0) > 0
+
+  const displayAssistantText = useMemo(() => {
+    const lastAssistant = displayMessages.filter((m) => m.role === 'assistant').at(-1)
+    return lastAssistant ? getTextContent(lastAssistant) : ''
+  }, [displayMessages])
+
+  const thinkingTextFromParts = useMemo(() => {
+    if (!isStreaming) return null
+    const last = messages.at(-1)
+    if (!last || last.role !== 'assistant') return null
+    const parts = last.parts ?? []
+    const hasText = parts.some((p) => {
+      if (p.type !== 'text') return false
+      const text = (p as { type: 'text'; text?: string }).text ?? ''
+      return text.length > 0
+    })
+    if (hasText) return null
+
+    const reasoningPart = [...parts].reverse().find((p) => p.type === 'reasoning') as ReasoningPart | undefined
+    if (reasoningPart) {
+      const text = reasoningPart.reasoning ?? reasoningPart.text ?? ''
+      if (text) return text
+    }
+
+    const toolCallPart = [...parts].reverse().find((p) => p.type === 'tool-call') as ToolCallPart | undefined
+    if (toolCallPart) {
+      const toolName = toolCallPart.toolName ?? toolCallPart.name
+      if (toolName) return `Using ${toolName}...`
+    }
+
+    return null
+  }, [messages, isStreaming])
+
+  const effectiveThinkingText = thinkingTextFromParts ?? thinkingText
+  const isThinking =
+    (status === 'submitted' || (status === 'streaming' && displayAssistantText.length === 0)) &&
+    !isPendingStream
 
   // Watch for canvas tool calls in streaming messages
   useEffect(() => {
@@ -327,6 +476,23 @@ export default function ChatPage() {
     }
   }, [messages])
 
+  useEffect(() => {
+    if (status === 'ready') {
+      setThinkingText(null)
+    }
+  }, [status])
+
+  useEffect(() => {
+    if (!isStreaming) return
+    if (displayAssistantText.length > 0) {
+      setThinkingText(null)
+    }
+  }, [displayAssistantText, isStreaming])
+
+  useEffect(() => {
+    setThinkingText(null)
+  }, [activeId])
+
   const handleNewChat = useCallback(() => {
     const id = crypto.randomUUID()
     createConversation(id, 'New Chat').then((conv) => {
@@ -339,6 +505,7 @@ export default function ChatPage() {
       setInput('')
       setSidebarOpen(false)
       setCanvas(CANVAS_INITIAL)
+      setMobileView('chat')
     })
   }, [setMessages])
 
@@ -348,6 +515,7 @@ export default function ChatPage() {
       setInput('')
       setSidebarOpen(false)
       setCanvas(CANVAS_INITIAL)
+      setMobileView('chat')
       // Don't clear pendingStream here — if there's an active stream for this
       // conversation, the SSE message_streaming_state event will populate it.
       // For other conversations, the render guard (conversationId check) hides it.
@@ -370,6 +538,7 @@ export default function ChatPage() {
         setActiveId(null)
         setMessages([])
         setCanvas(CANVAS_INITIAL)
+        setMobileView('list')
       }
     },
     [activeId, setMessages]
@@ -447,6 +616,7 @@ export default function ChatPage() {
     requestSessionIdRef.current = currentActiveId
 
     setInput('')
+    setThinkingText(null)
     sendMessage({ text })
   }, [activeId, input, sendMessage, conversations])
 
@@ -479,7 +649,7 @@ export default function ChatPage() {
         />
       </div>
 
-      {/* Mobile sidebar (Sheet) */}
+      {/* Mobile sidebar (Sheet) — kept for desktop sheet fallback, hidden on mobile */}
       <Sheet open={sidebarOpen} onOpenChange={setSidebarOpen}>
         <SheetContent side="left" className="w-[85vw] max-w-[320px] border-zinc-800/60 bg-zinc-950/95 p-0 backdrop-blur-xl sm:w-[300px]">
           <SheetTitle className="sr-only">Conversations</SheetTitle>
@@ -494,8 +664,18 @@ export default function ChatPage() {
         </SheetContent>
       </Sheet>
 
-      {/* Main chat area */}
-      <main className="flex flex-1 flex-col overflow-hidden" id="main-content">
+      {/* Mobile conversation list — shown when mobileView is 'list' */}
+      <div className={`${mobileView === 'list' ? 'flex' : 'hidden'} h-full w-full flex-col pb-20 md:hidden`}>
+        <MobileConversationList
+          conversations={conversations}
+          onSelect={handleSelectConversation}
+          onNew={handleNewChat}
+        />
+        <MobileBottomNav />
+      </div>
+
+      {/* Main chat area — always visible on desktop; on mobile only when mobileView is 'chat' */}
+      <main className={`flex flex-1 flex-col overflow-hidden ${mobileView === 'chat' ? 'flex' : 'hidden md:flex'}`} id="main-content">
         {/* Header */}
         <header className="glass-subtle flex items-center gap-3 border-b border-zinc-800/60 px-3 py-3 sm:px-4">
           <button
@@ -539,7 +719,12 @@ export default function ChatPage() {
         {/* Messages */}
         <ScrollArea className="min-h-0 flex-1" viewportRef={scrollRef}>
           <div className="mx-auto max-w-3xl px-4 py-6 sm:px-6">
-            <MessageList messages={displayMessages} isLoading={isStreaming || isPendingStream} isThinking={isThinking} />
+            <MessageList
+              messages={displayMessages}
+              isLoading={isStreaming || isPendingStream}
+              isThinking={isThinking}
+              thinkingText={effectiveThinkingText}
+            />
           </div>
         </ScrollArea>
 
@@ -581,7 +766,10 @@ export default function ChatPage() {
         </div>
       )}
 
-      <MobileBottomNav />
+      {/* Bottom nav — only show in chat view on mobile (list view has its own) */}
+      <div className={`${mobileView === 'chat' ? 'block' : 'hidden'} md:block`}>
+        <MobileBottomNav />
+      </div>
     </div>
   )
 }

@@ -43,6 +43,10 @@ type InboundMessage = {
   text?: string
 }
 
+type ReasoningChunk = { type: 'reasoning-delta'; reasoning?: string; text?: string }
+type ToolCallChunk = { type: 'tool-call'; toolName?: string; name?: string }
+type ToolInputStartChunk = { type: 'tool-input-start'; toolName?: string; name?: string }
+
 /** Extract plain text from any message format the Vercel AI SDK might send */
 function extractText(msg: InboundMessage): string {
   // Plain string content
@@ -129,6 +133,38 @@ export async function POST(req: Request) {
             delta,
           },
         })
+        return
+      }
+
+      if (chunk.type === 'reasoning-delta') {
+        const reasoningChunk = chunk as ReasoningChunk
+        const text = reasoningChunk.reasoning ?? reasoningChunk.text ?? ''
+        if (!text) return
+        broadcast({
+          type: 'thinking_update',
+          payload: {
+            conversation_id: conversationId,
+            text,
+          },
+        })
+        return
+      }
+
+      if (chunk.type === 'tool-call' || chunk.type === 'tool-input-start') {
+        const toolChunk =
+          chunk.type === 'tool-call'
+            ? (chunk as ToolCallChunk)
+            : (chunk as ToolInputStartChunk)
+        const toolName = toolChunk.toolName ?? toolChunk.name
+        if (!toolName) return
+        broadcast({
+          type: 'thinking_update',
+          payload: {
+            conversation_id: conversationId,
+            text: `Using ${toolName}...`,
+          },
+        })
+        return
       }
     },
     onFinish: () => {

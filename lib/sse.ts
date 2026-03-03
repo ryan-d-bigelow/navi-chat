@@ -9,6 +9,8 @@ export type SyncEventType =
   | 'message_streaming'
   /** Full accumulated content replayed to a freshly connected client */
   | 'message_streaming_state'
+  /** Reasoning or tool-call text for the thinking bubble */
+  | 'thinking_update'
   /** An OpenClaw session has been linked to a conversation */
   | 'conversation_session_linked'
 
