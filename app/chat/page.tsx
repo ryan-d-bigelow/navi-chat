@@ -124,7 +124,7 @@ function MobileConversationList({
   return (
     <div className="flex h-full flex-col bg-zinc-950">
       {/* Header */}
-      <header className="flex shrink-0 items-center gap-3 border-b border-zinc-800/60 px-4 py-3">
+      <header className="flex h-12 shrink-0 items-center gap-3 border-b border-zinc-800/60 px-4">
         <span className="text-lg" role="img" aria-label="Navi">🧚</span>
         <h1 className="text-sm font-semibold tracking-tight text-zinc-200">Navi Chat</h1>
         <div className="flex-1" />
@@ -1131,7 +1131,7 @@ function ChatPageInner() {
               style={chatWidthStyle}
             >
             {/* Header */}
-            <header className="glass-subtle flex items-center gap-3 border-b border-zinc-800/60 px-3 py-3 sm:px-4">
+            <header className="glass-subtle flex h-12 items-center gap-3 border-b border-zinc-800/60 px-3 sm:px-4">
               <button
                 onClick={() => setSidebarOpen(true)}
                 aria-label="Open conversation sidebar"
@@ -1250,7 +1250,7 @@ function ChatPageInner() {
               }`}
               style={logsWidthStyle}
             >
-              <header className="flex items-center justify-between gap-2 border-b border-zinc-800/60 bg-zinc-950/80 px-3 py-2.5">
+              <header className="flex h-12 items-center justify-between gap-2 border-b border-zinc-800/60 bg-zinc-950/80 px-3">
                 <div className="min-w-0">
                   <p className="text-xs font-semibold text-zinc-200">Agent Log</p>
                   <p className="truncate text-[10px] text-zinc-500">
@@ -1273,7 +1273,7 @@ function ChatPageInner() {
                   <X className="h-3.5 w-3.5" aria-hidden="true" />
                 </button>
               </header>
-              <div className="min-h-0 flex-1 overflow-y-auto p-3">
+              <div className="flex min-h-0 flex-1 flex-col p-3">
                 {panelAgents.length > 0 ? (
                   <AgentLogStack
                     agents={panelAgents}

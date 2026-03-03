@@ -84,7 +84,7 @@ function AgentLogCard({
 
   return (
     <section
-      className={`rounded-xl border border-zinc-800/80 bg-zinc-950/70 shadow-sm transition-colors ${
+      className={`flex min-h-0 flex-1 flex-col rounded-xl border border-zinc-800/80 bg-zinc-950/70 shadow-sm transition-colors ${
         isSelected ? 'ring-1 ring-emerald-500/60' : 'hover:border-zinc-700'
       }`}
     >
@@ -126,7 +126,7 @@ function AgentLogCard({
 
       <div
         ref={containerRef}
-        className="max-h-44 min-h-[120px] overflow-y-auto border-t border-zinc-900 px-3 py-2 font-mono text-[11px] leading-[1.6]"
+        className="min-h-0 flex-1 overflow-y-auto border-t border-zinc-900 px-3 py-2 font-mono text-[11px] leading-[1.6]"
         role="log"
         aria-label={`Latest logs for ${agent.name}`}
         aria-live="off"

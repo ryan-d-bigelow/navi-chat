@@ -500,7 +500,7 @@ export function LinearPanel({ onClose }: LinearPanelProps) {
       className="glass flex h-full w-full flex-col border-r border-zinc-800/60"
     >
       {/* Header */}
-      <header className="flex items-center justify-between border-b border-zinc-800/60 px-3 py-3">
+      <header className="flex h-12 items-center justify-between border-b border-zinc-800/60 px-3">
         <div className="flex items-center gap-2">
           {/* Linear brand mark */}
           <div className="flex h-4 w-4 shrink-0 items-center justify-center rounded bg-[#5E6AD2]" aria-hidden="true">
