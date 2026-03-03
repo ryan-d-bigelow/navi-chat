@@ -632,7 +632,7 @@ function AgentsPageInner() {
   const selectedAgent = agents.find((a) => a.id === selectedId)
 
   return (
-    <div className="flex h-dvh overflow-hidden bg-zinc-900">
+    <div className="flex h-dvh overflow-hidden bg-zinc-900 pb-16 md:pb-0">
       {/* ── Left panel — always visible on md+, toggles on mobile ──── */}
       <nav
         aria-label="Agent list"

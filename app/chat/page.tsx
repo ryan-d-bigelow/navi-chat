@@ -7,11 +7,6 @@ import { CanvasPanel } from '@/components/canvas/canvas-panel'
 import { LinearPanel } from '@/components/linear/linear-panel'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import {
-  Sheet,
-  SheetContent,
-  SheetTitle,
-} from '@/components/ui/sheet'
-import {
   loadConversations,
   loadMessages,
   createConversation,
@@ -30,7 +25,7 @@ import type { SyncEvent } from '@/lib/sse'
 import { useChat } from '@ai-sdk/react'
 import { DefaultChatTransport } from 'ai'
 import type { UIMessage } from 'ai'
-import { LayoutList, Menu, PanelRight } from 'lucide-react'
+import { LayoutList, PanelRight } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 // Stable ref accessor extracted outside render to satisfy react-hooks/refs.
@@ -65,7 +60,6 @@ function toUIMessages(messages: ChatMessage[]): UIMessage[] {
 export default function ChatPage() {
   const [conversations, setConversations] = useState<Conversation[]>([])
   const [activeId, setActiveId] = useState<string | null>(null)
-  const [sidebarOpen, setSidebarOpen] = useState(false)
   const [linearOpen, setLinearOpen] = useState(true)
   const [canvas, setCanvas] = useState<CanvasState>(CANVAS_INITIAL)
   const [input, setInput] = useState('')
@@ -336,7 +330,7 @@ export default function ChatPage() {
       setActiveId(conv.id)
       setMessages([])
       setInput('')
-      setSidebarOpen(false)
+
       setCanvas(CANVAS_INITIAL)
     })
   }, [setMessages])
@@ -345,7 +339,7 @@ export default function ChatPage() {
     (id: string) => {
       setActiveId(id)
       setInput('')
-      setSidebarOpen(false)
+
       setCanvas(CANVAS_INITIAL)
       // Don't clear pendingStream here — if there's an active stream for this
       // conversation, the SSE message_streaming_state event will populate it.
@@ -478,32 +472,13 @@ export default function ChatPage() {
         />
       </div>
 
-      {/* Mobile sidebar (Sheet) */}
-      <Sheet open={sidebarOpen} onOpenChange={setSidebarOpen}>
-        <SheetContent side="left" className="w-[260px] border-zinc-800/60 bg-zinc-950/95 p-0 backdrop-blur-xl">
-          <SheetTitle className="sr-only">Conversations</SheetTitle>
-          <Sidebar
-            conversations={conversations}
-            activeId={activeId}
-            onSelect={handleSelectConversation}
-            onNew={handleNewChat}
-            onDelete={handleDeleteConversation}
-            onRename={handleRenameConversation}
-          />
-        </SheetContent>
-      </Sheet>
+      {/* Mobile sidebar — replaced by BottomNav; Sheet kept for desktop only */}
 
       {/* Main chat area */}
-      <main className="flex flex-1 flex-col overflow-hidden" id="main-content">
+      <main className="flex flex-1 flex-col overflow-hidden pb-16 md:pb-0" id="main-content">
         {/* Header */}
         <header className="glass-subtle flex items-center gap-3 border-b border-zinc-800/60 px-4 py-3">
-          <button
-            onClick={() => setSidebarOpen(true)}
-            aria-label="Open conversation sidebar"
-            className="flex min-h-[44px] min-w-[44px] items-center justify-center rounded-lg text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-200 focus-ring md:hidden"
-          >
-            <Menu className="h-5 w-5" aria-hidden="true" />
-          </button>
+          {/* Hamburger removed — mobile uses BottomNav */}
           <span className="text-lg" role="img" aria-label="Navi">🧚</span>
           <h1 className="text-sm font-semibold tracking-tight text-zinc-200">Navi Chat</h1>
           <div className="flex-1" />
