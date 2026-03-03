@@ -239,7 +239,7 @@ export function LinearPanel({ onClose }: LinearPanelProps) {
   return (
     <aside
       aria-label="Linear tasks"
-      className="glass flex h-full w-[300px] shrink-0 flex-col border-l border-zinc-800/60"
+      className="glass flex h-full w-full flex-col border-l border-zinc-800/60 md:w-[300px] md:shrink-0"
     >
       {/* Header */}
       <header className="flex items-center justify-between border-b border-zinc-800/60 px-3 py-3">

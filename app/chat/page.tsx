@@ -480,7 +480,10 @@ export default function ChatPage() {
 
       {/* Mobile sidebar (Sheet) */}
       <Sheet open={sidebarOpen} onOpenChange={setSidebarOpen}>
-        <SheetContent side="left" className="w-[260px] border-zinc-800/60 bg-zinc-950/95 p-0 backdrop-blur-xl">
+        <SheetContent
+          side="left"
+          className="w-[85vw] max-w-[320px] border-zinc-800/60 bg-zinc-950/95 p-0 backdrop-blur-xl sm:w-[260px]"
+        >
           <SheetTitle className="sr-only">Conversations</SheetTitle>
           <Sidebar
             conversations={conversations}
@@ -552,7 +555,10 @@ export default function ChatPage() {
         )}
 
         {/* Input — sticky at bottom */}
-        <div id="chat-input" className="mx-auto w-full max-w-3xl px-4 pb-4 pt-2 sm:px-6">
+        <div
+          id="chat-input"
+          className="mx-auto w-full max-w-3xl px-4 pb-[calc(1rem+env(safe-area-inset-bottom))] pt-2 sm:px-6 sm:pb-4"
+        >
           <ChatInput
             input={input}
             setInput={setInput}

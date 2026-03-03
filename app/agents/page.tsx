@@ -206,10 +206,14 @@ function AgentCard({
           </span>
         )}
         {agent.model && (
-          <span className="max-w-[100px] truncate">{agent.model.split('/').pop()}</span>
+          <span className="max-w-[140px] truncate sm:max-w-[100px]">
+            {agent.model.split('/').pop()}
+          </span>
         )}
         {origin && (
-          <span className="max-w-[80px] truncate">{origin}</span>
+          <span className="max-w-[140px] truncate sm:max-w-[80px]">
+            {origin}
+          </span>
         )}
         <span className="ml-auto flex items-center gap-0.5">
           <Clock className="h-2.5 w-2.5" aria-hidden="true" />
@@ -493,7 +497,7 @@ function AgentDetailHeader({ agent }: { agent: AgentInfo }) {
               )}
               {agent.sessionKey && (
                 <span
-                  className="max-w-[200px] truncate text-[10px] text-zinc-700"
+                  className="max-w-[70vw] truncate text-[10px] text-zinc-700 sm:max-w-[200px]"
                   title={agent.sessionKey}
                 >
                   {agent.sessionKey}

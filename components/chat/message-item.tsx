@@ -41,7 +41,7 @@ export function MessageItem({ message, isStreaming }: MessageItemProps) {
     return (
       <article aria-label="You said" className="animate-fade-in">
         <div className="flex justify-end">
-          <div className="max-w-[80%] rounded-2xl bg-zinc-700/80 px-4 py-3">
+          <div className="max-w-[92%] rounded-2xl bg-zinc-700/80 px-4 py-3 sm:max-w-[80%]">
             <p className="whitespace-pre-wrap text-sm leading-[1.6] text-zinc-100">
               {getUserText(message)}
             </p>
@@ -62,7 +62,7 @@ export function MessageItem({ message, isStreaming }: MessageItemProps) {
             <span role="img" aria-label="Navi">🧚</span>
           </AvatarFallback>
         </Avatar>
-        <div className="min-w-0 max-w-[85%] pt-0.5">
+        <div className="min-w-0 max-w-[92%] pt-0.5 sm:max-w-[85%]">
           <Renderer message={message} isStreaming={isStreaming} />
           {isStreaming && (
             <span
