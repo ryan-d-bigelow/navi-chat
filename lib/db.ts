@@ -120,12 +120,12 @@ export function updateConversationTitle(id: string, title: string): void {
   ).run(title, Date.now(), id)
 }
 
-export function updateConversationSessionId(id: string, sessionId: string): void {
+export function updateConversationSessionKey(id: string, sessionKey: string): void {
   const db = getDb()
-  db.prepare('UPDATE navi_chat_conversations SET openclaw_session_id = ? WHERE id = ?').run(sessionId, id)
+  db.prepare('UPDATE navi_chat_conversations SET openclaw_session_id = ? WHERE id = ?').run(sessionKey, id)
 }
 
-export function getConversationSessionId(id: string): string | null {
+export function getConversationSessionKey(id: string): string | null {
   const db = getDb()
   const row = db.prepare('SELECT openclaw_session_id FROM navi_chat_conversations WHERE id = ?').get(id) as { openclaw_session_id: string | null } | undefined
   return row?.openclaw_session_id ?? null

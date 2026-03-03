@@ -16,7 +16,7 @@ function toConversation(api: ApiConversation, messages: ChatMessage[] = []): Con
     messages,
     createdAt: api.created_at,
     updatedAt: api.updated_at,
-    sessionId: api.openclaw_session_id ?? undefined,
+    sessionKey: api.openclaw_session_id ?? undefined,
   }
 }
 

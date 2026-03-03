@@ -255,6 +255,14 @@ function AgentCard({
         {origin && (
           <span className="max-w-[80px] truncate">{origin}</span>
         )}
+        {agent.sessionKey && (
+          <span
+            className="max-w-[120px] truncate text-zinc-700"
+            title={agent.sessionKey}
+          >
+            {agent.sessionKey}
+          </span>
+        )}
         <span className="ml-auto flex items-center gap-0.5">
           <Clock className="h-2.5 w-2.5" aria-hidden="true" />
           {lastSeen}
@@ -573,6 +581,25 @@ function EmptyState({ hasAgents }: { hasAgents: boolean }) {
   )
 }
 
+function SessionEndedState({ agentId }: { agentId: string }) {
+  return (
+    <div className="flex flex-1 flex-col items-center justify-center gap-3 text-center" role="status">
+      <div className="flex h-16 w-16 items-center justify-center rounded-2xl border border-amber-800/40 bg-amber-950/30">
+        <Clock className="h-8 w-8 text-amber-600" aria-hidden="true" />
+      </div>
+      <div>
+        <p className="text-sm font-medium text-zinc-300">Session ended</p>
+        <p className="mt-1 max-w-xs text-xs text-zinc-600">
+          The agent session has ended or been pruned. Select an active agent from the list.
+        </p>
+        <p className="mt-2 max-w-xs truncate text-[10px] text-zinc-700" title={agentId}>
+          {agentId}
+        </p>
+      </div>
+    </div>
+  )
+}
+
 // ─── Sidebar section ──────────────────────────────────────────────────────────
 
 function AgentGroup({
@@ -687,11 +714,13 @@ function AgentsPageInner() {
           if (!seen.has(id)) anchors.delete(id)
         }
         setAgents(data)
-        // Auto-select: prefer initialAgentId if it exists in the list, else null (no auto-select on mobile)
+        // Auto-select: match by sessionId (agent.id) or sessionKey (stable after pruning)
         setSelectedId((prev) => {
           if (prev) return prev
           if (initialAgentId) {
-            const found = data.find((a) => a.id === initialAgentId)
+            const found = data.find(
+              (a) => a.id === initialAgentId || a.sessionKey === initialAgentId,
+            )
             if (found) return found.id
           }
           return null
@@ -834,6 +863,8 @@ function AgentsPageInner() {
             <AgentDetailHeader agent={selectedAgent} />
             <LogViewer key={selectedAgent.id} agent={selectedAgent} />
           </>
+        ) : initialAgentId && !loading ? (
+          <SessionEndedState agentId={initialAgentId} />
         ) : (
           <EmptyState hasAgents={agents.length > 0} />
         )}

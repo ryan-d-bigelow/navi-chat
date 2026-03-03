@@ -3,7 +3,7 @@ import { createOpenAI } from '@ai-sdk/openai'
 import { z } from 'zod'
 import { broadcast } from '@/lib/sse'
 import { startStream, appendStreamChunk, finishStream } from '@/lib/streaming-buffer'
-import { updateConversationSessionId } from '@/lib/db'
+import { updateConversationSessionKey } from '@/lib/db'
 import { readFileSync, existsSync, createReadStream, statSync } from 'fs'
 import { homedir } from 'os'
 import path from 'path'
@@ -16,26 +16,26 @@ const openclaw = createOpenAI({
   apiKey: GATEWAY_TOKEN,
 })
 
-function findLatestOpenAISession(): string | null {
+function findLatestOpenAISessionKey(): string | null {
   const sessionsPath = path.join(homedir(), '.openclaw/agents/main/sessions/sessions.json')
   if (!existsSync(sessionsPath)) return null
   try {
     const raw = readFileSync(sessionsPath, 'utf-8')
     const sessions = JSON.parse(raw) as Record<string, { sessionId: string; updatedAt: number }>
-    let latest: { sessionId: string; updatedAt: number } | null = null
+    let latest: { key: string; updatedAt: number } | null = null
     for (const [key, session] of Object.entries(sessions)) {
       if (!key.startsWith('agent:main:openai:') && !key.startsWith('agent:main:openai-user:')) continue
       if (!latest || session.updatedAt > latest.updatedAt) {
-        latest = session
+        latest = { key, updatedAt: session.updatedAt }
       }
     }
-    return latest?.sessionId ?? null
+    return latest?.key ?? null
   } catch {
     return null
   }
 }
 
-function findOpenAiSessionIdForConversation(conversationId: string): string | null {
+function findOpenAiSessionKeyForConversation(conversationId: string): string | null {
   const sessionsPath = path.join(homedir(), '.openclaw/agents/main/sessions/sessions.json')
   if (!existsSync(sessionsPath)) return null
   const normalizedId = conversationId.trim().toLowerCase()
@@ -45,7 +45,7 @@ function findOpenAiSessionIdForConversation(conversationId: string): string | nu
     const raw = readFileSync(sessionsPath, 'utf-8')
     const sessions = JSON.parse(raw) as Record<string, { sessionId?: string }>
     const entry = sessions[sessionKey]
-    return entry?.sessionId ?? null
+    return entry ? sessionKey : null
   } catch {
     return null
   }
@@ -316,13 +316,13 @@ export async function POST(req: Request) {
         // Give OpenClaw a moment to flush session state, then link the session
         const capturedConversationId = conversationId
         setTimeout(() => {
-          const sessionId =
-            findOpenAiSessionIdForConversation(capturedConversationId) ?? findLatestOpenAISession()
-          if (sessionId) {
-            updateConversationSessionId(capturedConversationId, sessionId)
+          const sessionKey =
+            findOpenAiSessionKeyForConversation(capturedConversationId) ?? findLatestOpenAISessionKey()
+          if (sessionKey) {
+            updateConversationSessionKey(capturedConversationId, sessionKey)
             broadcast({
               type: 'conversation_session_linked',
-              payload: { conversation_id: capturedConversationId, session_id: sessionId },
+              payload: { conversation_id: capturedConversationId, session_key: sessionKey },
             })
           }
         }, 500)
@@ -336,5 +336,5 @@ export async function POST(req: Request) {
     },
   })
 
-  return result.toUIMessageStreamResponse()
+  return result.toUIMessageStreamResponse({ sendReasoning: false })
 }

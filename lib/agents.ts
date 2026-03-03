@@ -53,6 +53,7 @@ const NAVI_DB_PATH = path.join(
   homedir(),
   '.openclaw/workspace/data/navi.db',
 )
+const NAVI_CHAT_DB_PATH = path.join(process.cwd(), 'navi-chat.db')
 
 /** Derive agent type + display name from session key */
 function classifySession(
@@ -85,6 +86,14 @@ function classifySession(
     const provider = session?.origin?.provider ?? session?.deliveryContext?.channel ?? session?.lastChannel
     if (provider === 'slack') return { agentType: 'slack', name: 'Slack' }
     if (provider === 'openai') return { agentType: 'webchat', name: 'Navi Chat' }
+    // Primary Navi agent session
+    if (parts[2] === 'main') return { agentType: 'navi', name: 'Navi' }
+    // Unknown sub-context — label with the context segment so duplicates are distinguishable
+    const ctx = parts[2]
+    if (ctx) {
+      const label = ctx.charAt(0).toUpperCase() + ctx.slice(1)
+      return { agentType: 'navi', name: `Navi (${label})` }
+    }
     return { agentType: 'navi', name: 'Navi' }
   }
 
@@ -170,34 +179,39 @@ function isPidAlive(pid: number): boolean {
 }
 
 function loadRunningNaviOpsPids(): Set<number> {
-  try {
-    if (!existsSync(NAVI_DB_PATH)) return new Set()
-    const db = new Database(NAVI_DB_PATH, { readonly: true })
+  const pids = new Set<number>()
+  const dbPaths = [NAVI_DB_PATH, NAVI_CHAT_DB_PATH]
 
-    const tableExists = db
-      .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='navi_ops'")
-      .get()
-    if (!tableExists) {
+  for (const dbPath of dbPaths) {
+    try {
+      if (!existsSync(dbPath)) continue
+      const db = new Database(dbPath, { readonly: true })
+
+      const tableExists = db
+        .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='navi_ops'")
+        .get()
+      if (!tableExists) {
+        db.close()
+        continue
+      }
+
+      const columns = db.prepare('PRAGMA table_info(navi_ops)').all() as Array<{ name: string }>
+      const names = new Set(columns.map((c) => c.name))
+      const phaseKey = names.has('phase') ? 'phase' : names.has('state') ? 'state' : null
+      const where = phaseKey ? `WHERE ${phaseKey} = 'running'` : ''
+      const rows = db.prepare(`SELECT pid FROM navi_ops ${where}`).all() as Array<{ pid: number }>
       db.close()
-      return new Set()
-    }
 
-    const columns = db.prepare('PRAGMA table_info(navi_ops)').all() as Array<{ name: string }>
-    const names = new Set(columns.map((c) => c.name))
-    const phaseKey = names.has('phase') ? 'phase' : names.has('state') ? 'state' : null
-    const where = phaseKey ? `WHERE ${phaseKey} = 'running'` : ''
-    const rows = db.prepare(`SELECT pid FROM navi_ops ${where}`).all() as Array<{ pid: number }>
-    db.close()
-
-    const pids = new Set<number>()
-    for (const row of rows) {
-      const pid = Number(row.pid)
-      if (!Number.isNaN(pid) && isPidAlive(pid)) pids.add(pid)
+      for (const row of rows) {
+        const pid = Number(row.pid)
+        if (!Number.isNaN(pid) && isPidAlive(pid)) pids.add(pid)
+      }
+    } catch {
+      // ignore DB-level failures
     }
-    return pids
-  } catch {
-    return new Set()
   }
+
+  return pids
 }
 
 function parseOpenClawSessions(): AgentInfo[] {
@@ -210,6 +224,7 @@ function parseOpenClawSessions(): AgentInfo[] {
     const agents: AgentInfo[] = []
     const now = Date.now()
     const THIRTY_MIN_MS = 30 * 60 * 1000
+    const TWO_HOURS_MS = 2 * 60 * 60 * 1000
     const runningNaviOpsPids = loadRunningNaviOpsPids()
     const hasActiveNaviOps = runningNaviOpsPids.size > 0
 
@@ -232,7 +247,6 @@ function parseOpenClawSessions(): AgentInfo[] {
     for (const { key, session } of uniqueSessions.values()) {
       const updatedAt = session.updatedAt ?? 0
       const age = now - updatedAt
-      if (age > THIRTY_MIN_MS) continue
 
       const { agentType, name } = classifySession(key, session)
       const task = extractTask(key, session)
@@ -241,13 +255,17 @@ function parseOpenClawSessions(): AgentInfo[] {
       const isSystem = agentType === 'cron'
       const isAgentSession = !isConversation && !isSystem
 
+      // Conversations: 30 min window; agents/system: 2 hour window
+      const maxAge = isConversation ? THIRTY_MIN_MS : TWO_HOURS_MS
+      if (age > maxAge) continue
+
       if (isAgentSession && !hasActiveNaviOps) continue
       if (isSystem && !hasActiveNaviOps) continue
 
       const status: AgentInfo['status'] = session.systemSent ? 'running' : 'idle'
 
       agents.push({
-        id: session.sessionId,
+        id: key,
         name,
         agentType,
         status,
@@ -279,10 +297,35 @@ export function getAgents(): AgentInfo[] {
   const processAgents = parseProcesses()
   const sessionAgents = parseOpenClawSessions()
 
+  // Deduplicate navi-typed session agents: multiple sessions can resolve to
+  // agentType 'navi' (e.g. agent:main:main and agent:main:<unknown>). These
+  // represent the same logical Navi agent, so keep only the most recently
+  // updated one per name.
+  const naviByName = new Map<string, AgentInfo>()
+  const deduped: AgentInfo[] = []
+  for (const agent of sessionAgents) {
+    if (agent.agentType === 'navi') {
+      const existing = naviByName.get(agent.name)
+      if (!existing || (agent.updatedAt ?? 0) > (existing.updatedAt ?? 0)) {
+        naviByName.set(agent.name, agent)
+      }
+    } else {
+      deduped.push(agent)
+    }
+  }
+  deduped.push(...naviByName.values())
+  // Re-sort after dedup: running first, then idle; within each group by updatedAt desc
+  const statusOrder: Record<string, number> = { running: 0, idle: 1 }
+  deduped.sort((a, b) => {
+    const statusDiff = (statusOrder[a.status] ?? 99) - (statusOrder[b.status] ?? 99)
+    if (statusDiff !== 0) return statusDiff
+    return b.startedAt - a.startedAt
+  })
+
   // Deduplicate: process agents take priority (they have live PIDs)
-  const sessionIds = new Set(sessionAgents.map((a) => a.id))
+  const sessionIds = new Set(deduped.map((a) => a.id))
   const uniqueProcessAgents = processAgents.filter((a) => !sessionIds.has(a.id))
 
   // Process agents first (always running), then sessions sorted by status
-  return [...uniqueProcessAgents, ...sessionAgents]
+  return [...uniqueProcessAgents, ...deduped]
 }

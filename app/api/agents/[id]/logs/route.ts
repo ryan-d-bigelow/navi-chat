@@ -1,5 +1,5 @@
 import { createReadStream } from 'fs'
-import { existsSync, statSync, readdirSync } from 'fs'
+import { existsSync, statSync, readdirSync, readFileSync } from 'fs'
 import { execSync } from 'child_process'
 import { homedir } from 'os'
 import path from 'path'
@@ -168,6 +168,43 @@ function streamSessionFile(
   }
 }
 
+function resolveSessionFileFromId(sessionId: string): string | null {
+  const sessionsDir = path.join(homedir(), '.openclaw/agents/main/sessions')
+  let sessionFile = path.join(sessionsDir, `${sessionId}.jsonl`)
+  if (!existsSync(sessionFile)) {
+    try {
+      const matches = readdirSync(sessionsDir).filter(
+        (f) => f.startsWith(sessionId) && f.endsWith('.jsonl'),
+      )
+      if (matches.length > 0) {
+        sessionFile = path.join(sessionsDir, matches[0])
+      }
+    } catch {
+      return null
+    }
+  }
+  return existsSync(sessionFile) ? sessionFile : null
+}
+
+function resolveSessionFileFromKey(sessionKey: string): string | null {
+  const sessionsPath = path.join(homedir(), '.openclaw/agents/main/sessions/sessions.json')
+  if (!existsSync(sessionsPath)) return null
+  try {
+    const raw = readFileSync(sessionsPath, 'utf-8')
+    const sessions = JSON.parse(raw) as Record<string, { sessionId?: string; sessionFile?: string }>
+    const entry = sessions[sessionKey]
+    if (!entry) return null
+    const sessionFile = entry.sessionFile
+    if (sessionFile && existsSync(sessionFile)) return sessionFile
+    if (entry.sessionId) {
+      return resolveSessionFileFromId(entry.sessionId)
+    }
+  } catch {
+    return null
+  }
+  return null
+}
+
 /** Tail a log file (generic, for process agents or fallback) */
 function tailLogFile(
   controller: ReadableStreamDefaultController<Uint8Array>,
@@ -236,25 +273,33 @@ export async function GET(
       // ── Strategy 1: OpenClaw session (UUID) ──────────────────────────────
       // Look for the per-session JSONL in ~/.openclaw/agents/main/sessions/
       // OpenClaw sometimes appends -topic-<timestamp> to session filenames.
-      if (id.length === 36 && !id.startsWith('proc-')) {
-        const sessionsDir = path.join(homedir(), '.openclaw/agents/main/sessions')
-
-        // Try exact match first, then glob for -topic-* suffix variants
-        let sessionFile = path.join(sessionsDir, `${id}.jsonl`)
-        if (!existsSync(sessionFile)) {
-          try {
-            const matches = readdirSync(sessionsDir).filter(
-              (f) => f.startsWith(id) && f.endsWith('.jsonl'),
-            )
-            if (matches.length > 0) {
-              sessionFile = path.join(sessionsDir, matches[0])
-            }
-          } catch {
-            // readdirSync failed — fall through to not-found case
-          }
+      if (!id.startsWith('proc-') && id.startsWith('agent:')) {
+        const sessionFile = resolveSessionFileFromKey(id)
+        if (sessionFile) {
+          streamSessionFile(controller, encoder, sessionFile)
+          return
         }
 
-        if (existsSync(sessionFile)) {
+        const msg: LogLine = {
+          type: 'error',
+          content: `No session log found for ${id}. The session may have ended or been pruned.`,
+          timestamp: Date.now(),
+        }
+        try {
+          controller.enqueue(encoder.encode(formatSSE(msg)))
+        } catch {
+          // ignore
+        }
+        const keepalive1 = setInterval(() => {
+          try { controller.enqueue(encoder.encode(': keepalive\n\n')) } catch { clearInterval(keepalive1) }
+        }, 15000)
+        ;(controller as unknown as Record<string, () => void>).__cleanup = () => clearInterval(keepalive1)
+        return
+      }
+
+      if (id.length === 36 && !id.startsWith('proc-')) {
+        const sessionFile = resolveSessionFileFromId(id)
+        if (sessionFile) {
           streamSessionFile(controller, encoder, sessionFile)
           return
         }

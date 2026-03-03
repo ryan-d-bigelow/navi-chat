@@ -12,6 +12,7 @@ import {
 import type { Conversation } from '@/lib/types'
 import {
   Bot,
+  ChevronDown,
   MessageSquare,
   MessageSquarePlus,
   Search,
@@ -25,6 +26,13 @@ import { usePathname, useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 
 /* ── Helpers ──────────────────────────────────────────────────────────── */
+
+const RECENT_THRESHOLD_MS = 30 * 60 * 1000 // 30 minutes
+const SIDEBAR_RECENT_ONLY_KEY = 'navi.sidebar.recentOnly'
+
+function isRecentlyActive(timestamp: number): boolean {
+  return Date.now() - timestamp < RECENT_THRESHOLD_MS
+}
 
 function timeAgo(timestamp: number): string {
   const seconds = Math.floor((Date.now() - timestamp) / 1000)
@@ -522,9 +530,9 @@ function ConversationItem({
   }
 
   const timeLabel = timeAgo(conversation.updatedAt)
-  const hasSessionMatch = !!conversation.sessionId && liveAgentSessions.has(conversation.sessionId)
+  const hasSessionMatch = !!conversation.sessionKey && liveAgentSessions.has(conversation.sessionKey)
   const processFallbackId = liveProcessAgentIds[0]
-  const botTargetId = hasSessionMatch ? conversation.sessionId : processFallbackId
+  const botTargetId = hasSessionMatch ? conversation.sessionKey : processFallbackId
   const showBotButton = hasSessionMatch || liveProcessAgentIds.length > 0
 
   return (

@@ -57,6 +57,7 @@ type AgentStatus = 'running' | 'idle' | 'done'
 
 interface AgentInfo {
   id: string
+  sessionKey?: string
   source: 'session' | 'process'
   status: AgentStatus
 }
@@ -214,6 +215,9 @@ export default function ChatPage() {
       const processIds: string[] = []
       for (const agent of data) {
         if (agent.status === 'running' || agent.status === 'idle') {
+          // Add sessionKey (stable across pruning) for conversation matching,
+          // and agent.id (sessionId UUID) for process agent fallback
+          if (agent.sessionKey) next.add(agent.sessionKey)
           next.add(agent.id)
           if (agent.source === 'process') {
             processIds.push(agent.id)
@@ -364,10 +368,10 @@ export default function ChatPage() {
           }
 
           case 'conversation_session_linked': {
-            const payload = syncEvent.payload as { conversation_id: string; session_id: string }
+            const payload = syncEvent.payload as { conversation_id: string; session_key: string }
             setConversations((prev) =>
               prev.map((c) =>
-                c.id === payload.conversation_id ? { ...c, sessionId: payload.session_id } : c
+                c.id === payload.conversation_id ? { ...c, sessionKey: payload.session_key } : c
               )
             )
             refreshAgents()
@@ -733,15 +737,15 @@ export default function ChatPage() {
           </button>
           <span className="text-lg" role="img" aria-label="Navi">🧚</span>
           <h1 className="text-sm font-semibold tracking-tight text-zinc-200">Navi Chat</h1>
-          {activeConversation?.sessionId && liveAgentSessions.has(activeConversation.sessionId) && (
+          {activeConversation?.sessionKey && liveAgentSessions.has(activeConversation.sessionKey) && (
             <Link
-              href={`/agents?agentId=${activeConversation.sessionId}`}
-              aria-label={`View OpenClaw session ${activeConversation.sessionId}`}
-              title={activeConversation.sessionId}
+              href={`/agents?agentId=${activeConversation.sessionKey}`}
+              aria-label={`View OpenClaw session ${activeConversation.sessionKey}`}
+              title={activeConversation.sessionKey}
               className="flex max-w-[150px] items-center gap-1 rounded-full border border-zinc-700/80 bg-zinc-900/60 px-2.5 py-1 text-[11px] font-medium text-emerald-300 transition-colors hover:border-emerald-400/60 hover:text-emerald-200 focus-ring sm:max-w-none"
             >
               <Bot className="h-3 w-3" aria-hidden="true" />
-              <span className="truncate">OpenClaw · {activeConversation.sessionId.slice(0, 8)}</span>
+              <span className="truncate">OpenClaw · {activeConversation.sessionKey.slice(0, 16)}</span>
             </Link>
           )}
           <div className="flex-1" />
