@@ -120,11 +120,17 @@
   * {
     @apply border-border outline-ring/50;
   }
+  html {
+    overflow: hidden;
+    overscroll-behavior: none;
+  }
   body {
     @apply bg-background text-foreground;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     text-rendering: optimizeLegibility;
+    overflow: hidden;
+    overscroll-behavior: none;
   }
 }
 

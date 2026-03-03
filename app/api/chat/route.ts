@@ -71,6 +71,12 @@ export async function POST(req: Request) {
     .filter(m => ['user', 'assistant', 'system'].includes(m.role))
     .map(m => ({ role: m.role, content: extractText(m) }))
     .filter(m => m.content.length > 0)
+  const systemNote = {
+    role: 'system' as const,
+    content:
+      'You can embed canvas content inline using triple-backtick canvas fences. Use this for plans, architecture diagrams, tables, dashboards, or any concept where visual beats text. Canvas supports HTML/CSS/JS.',
+  }
+  const finalMessages = [systemNote, ...coreMessages]
 
   // Start buffering if we have a conversationId to key on
   if (conversationId) {
@@ -79,7 +85,7 @@ export async function POST(req: Request) {
 
   const result = streamText({
     model: openclaw.chat('agent:main'),
-    messages: coreMessages,
+    messages: finalMessages,
     tools: {
       canvas: {
         description:

@@ -457,7 +457,7 @@ export default function ChatPage() {
       </a>
 
       {/* Desktop sidebar */}
-      <div className="hidden md:block">
+      <div className="hidden md:flex h-full">
         <Sidebar
           conversations={conversations}
           activeId={activeId}
