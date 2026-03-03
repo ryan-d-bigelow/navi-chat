@@ -85,7 +85,7 @@ export function Sidebar({
         </Button>
       </div>
       <Separator className="bg-zinc-800/60" />
-      <ScrollArea className="flex-1">
+      <ScrollArea className="min-h-0 flex-1">
         <ul role="list" aria-label="Conversation history" className="p-2">
           {conversations.length === 0 && (
             <li>
