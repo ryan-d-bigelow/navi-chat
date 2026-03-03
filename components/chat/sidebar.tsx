@@ -129,6 +129,7 @@ interface SidebarProps {
   onRename: (id: string, title: string) => void
   liveAgentSessions: Set<string>
   liveProcessAgentIds: string[]
+  onAgentSelect?: (agentId: string) => void
 }
 
 export function Sidebar({
@@ -140,6 +141,7 @@ export function Sidebar({
   onRename,
   liveAgentSessions,
   liveProcessAgentIds,
+  onAgentSelect,
 }: SidebarProps) {
   const [search, setSearch] = useState('')
   const [recentOnly, setRecentOnly] = useState(true)
@@ -679,7 +681,11 @@ function ConversationItem({
               <button
                 onClick={(e) => {
                   e.stopPropagation()
-                  router.push(`/agents?agentId=${botTargetId}`)
+                  if (onAgentSelect) {
+                    onAgentSelect(botTargetId)
+                  } else {
+                    router.push(`/agents?agentId=${botTargetId}`)
+                  }
                 }}
                 aria-label={`View agent for ${conversation.title}`}
                 className="flex min-h-[44px] min-w-[44px] items-center justify-center rounded text-zinc-500 transition-colors hover:bg-zinc-700 hover:text-zinc-300 focus-ring md:min-h-0 md:min-w-0 md:p-1.5"

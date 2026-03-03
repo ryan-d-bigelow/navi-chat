@@ -28,10 +28,14 @@ function getMessageType(message: UIMessage): MessageType {
 }
 
 function getUserText(message: UIMessage): string {
-  return message.parts
+  const parts = message.parts ?? []
+  const fromParts = parts
     .filter((p): p is { type: 'text'; text: string } => p.type === 'text')
     .map((p) => p.text)
     .join('')
+  if (fromParts.length > 0) return fromParts
+  const content = (message as { content?: string }).content
+  return typeof content === 'string' ? content : ''
 }
 
 function stripUserLabelPrefix(message: UIMessage, text: string): string {

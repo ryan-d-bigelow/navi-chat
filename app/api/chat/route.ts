@@ -1,6 +1,5 @@
 import { streamText, stepCountIs } from 'ai'
 import { createOpenAI } from '@ai-sdk/openai'
-import { z } from 'zod'
 import { broadcast } from '@/lib/sse'
 import { startStream, appendStreamChunk, finishStream } from '@/lib/streaming-buffer'
 import { updateConversationSessionKey } from '@/lib/db'
@@ -232,33 +231,6 @@ export async function POST(req: Request) {
     model: openclaw.chat('agent:main'),
     messages: finalMessages,
     providerOptions: openaiUser ? { openai: { user: openaiUser } } : undefined,
-    tools: {
-      canvas: {
-        description:
-          'Present visual content in the canvas side panel. Use this when your response includes structured data, diagrams, plans, tables, or formatted content that benefits from a dedicated visual space. Actions: "present" shows content, "hide" closes the panel, "navigate" loads a URL.',
-        inputSchema: z.object({
-          action: z
-            .enum(['present', 'hide', 'navigate'])
-            .describe('Canvas action to perform'),
-          content: z
-            .string()
-            .optional()
-            .describe(
-              'Markdown or HTML content to display (for present action)'
-            ),
-          url: z
-            .string()
-            .optional()
-            .describe('URL to load in the canvas (for navigate action)'),
-          title: z
-            .string()
-            .optional()
-            .describe('Title for the canvas panel header'),
-        }),
-        // Canvas tool is client-side — result is forwarded to the UI for rendering.
-        execute: async (args: { action: string; content?: string; url?: string; title?: string }) => args,
-      },
-    },
     stopWhen: stepCountIs(3),
     // Tap each text chunk to buffer + broadcast via SSE so reconnecting clients
     // can see in-progress tokens.

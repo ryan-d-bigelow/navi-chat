@@ -38,8 +38,12 @@ interface SessionEntry {
   skillsSnapshot?: { prompt?: string }
   lastMessage?: string
   lastChannel?: string
-  origin?: { provider?: string }
+  displayName?: string
+  origin?: { provider?: string; chatType?: string }
   deliveryContext?: { channel?: string }
+  model?: string
+  fallbackNoticeActiveModel?: string
+  fallbackNoticeSelectedModel?: string
 }
 
 type SessionsJson = Record<string, SessionEntry>
@@ -80,14 +84,20 @@ function classifySession(
   if (agentRole === 'main') {
     // Sub-classify by channel/context
     if (parts[2] === 'cron') return { agentType: 'cron', name: 'Cron Job' }
-    if (parts[2] === 'slack') return { agentType: 'slack', name: 'Slack' }
+    if (parts[2] === 'slack') return { agentType: 'slack', name: 'Slack Channel' }
     if (parts[2] === 'openai') return { agentType: 'webchat', name: 'Navi Chat' }
-    if (parts[2] === 'main' && parts[3] === 'thread') return { agentType: 'slack', name: 'Slack Thread' }
+    if (parts[2] === 'openai-user') return { agentType: 'webchat', name: 'Navi Chat' }
+    if (parts[2] === 'main' && parts[3] === 'thread') {
+      const channelId = extractSlackThreadChannelId(session)
+      const name = channelId?.startsWith('D') ? 'Slack DM' : 'Slack Thread'
+      return { agentType: 'slack', name }
+    }
     const provider = session?.origin?.provider ?? session?.deliveryContext?.channel ?? session?.lastChannel
-    if (provider === 'slack') return { agentType: 'slack', name: 'Slack' }
+    if (provider === 'slack') return { agentType: 'slack', name: 'Slack Channel' }
     if (provider === 'openai') return { agentType: 'webchat', name: 'Navi Chat' }
     // Primary Navi agent session
     if (parts[2] === 'main') return { agentType: 'navi', name: 'Navi' }
+    if (parts[2] === 'openai-user') return { agentType: 'navi', name: 'Navi' }
     // Unknown sub-context — label with the context segment so duplicates are distinguishable
     const ctx = parts[2]
     if (ctx) {
@@ -98,6 +108,17 @@ function classifySession(
   }
 
   return { agentType: 'process', name: agentRole.charAt(0).toUpperCase() + agentRole.slice(1) }
+}
+
+function extractSlackThreadChannelId(session?: SessionEntry): string | null {
+  const label = session?.displayName
+  if (!label) return null
+  const hashIndex = label.indexOf('#')
+  if (hashIndex === -1) return null
+  const colonIndex = label.indexOf(':', hashIndex)
+  const endIndex = colonIndex === -1 ? label.length : colonIndex
+  const channelId = label.slice(hashIndex + 1, endIndex).trim()
+  return channelId || null
 }
 
 /** Best-effort task description from session data */
@@ -136,6 +157,13 @@ function parseProcesses(): AgentInfo[] {
 
       const cmd = parts.slice(10).join(' ')
       if (cmd.includes('grep')) continue
+      const lowerCmd = cmd.toLowerCase()
+      const isVendorBinary =
+        lowerCmd.includes('codex-darwin-arm64') ||
+        lowerCmd.includes('aarch64-apple-darwin') ||
+        lowerCmd.includes('node_modules/@openai/codex/node_modules') ||
+        /\/vendor(\/|$)/.test(lowerCmd)
+      if (isVendorBinary) continue
 
       let name = 'Claude Code'
       let agentType: AgentType = 'coder'
@@ -223,8 +251,14 @@ function parseOpenClawSessions(): AgentInfo[] {
     const uniqueSessions = new Map<string, { key: string; session: SessionEntry }>()
     const agents: AgentInfo[] = []
     const now = Date.now()
-    const THIRTY_MIN_MS = 30 * 60 * 1000
-    const TWO_HOURS_MS = 2 * 60 * 60 * 1000
+    const envWindowMs = Number.parseInt(process.env.NAVI_SESSION_WINDOW_MS ?? '', 10)
+    const envWindowMin = Number.parseInt(process.env.NAVI_SESSION_WINDOW_MINUTES ?? '', 10)
+    const sessionWindowMs =
+      (Number.isFinite(envWindowMs) && envWindowMs > 0
+        ? envWindowMs
+        : Number.isFinite(envWindowMin) && envWindowMin > 0
+          ? envWindowMin * 60 * 1000
+          : 30 * 60 * 1000)
     const runningNaviOpsPids = loadRunningNaviOpsPids()
     const hasActiveNaviOps = runningNaviOpsPids.size > 0
 
@@ -248,28 +282,33 @@ function parseOpenClawSessions(): AgentInfo[] {
       const updatedAt = session.updatedAt ?? 0
       const age = now - updatedAt
 
+      if (age > sessionWindowMs) continue
+
       const { agentType, name } = classifySession(key, session)
       const task = extractTask(key, session)
 
       const isConversation = agentType === 'slack' || agentType === 'webchat'
       const isSystem = agentType === 'cron'
       const isAgentSession = !isConversation && !isSystem
+      const isMainNaviSession = key === 'agent:main:main'
 
-      // Conversations: 30 min window; agents/system: 2 hour window
-      const maxAge = isConversation ? THIRTY_MIN_MS : TWO_HOURS_MS
-      if (age > maxAge) continue
-
-      if (isAgentSession && !hasActiveNaviOps) continue
+      if (isAgentSession && !hasActiveNaviOps && !isMainNaviSession) continue
       if (isSystem && !hasActiveNaviOps) continue
 
       const status: AgentInfo['status'] = session.systemSent ? 'running' : 'idle'
+
+      const model =
+        session.model ??
+        session.fallbackNoticeActiveModel ??
+        session.fallbackNoticeSelectedModel ??
+        ''
 
       agents.push({
         id: key,
         name,
         agentType,
         status,
-        model: 'claude-sonnet-4-6',
+        model,
         task,
         sessionKey: key,
         updatedAt,

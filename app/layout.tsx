@@ -1,15 +1,9 @@
 import type { Metadata, Viewport } from 'next'
-import { Inter } from 'next/font/google'
 import { Toaster } from '@/components/ui/sonner'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { ThemeProvider } from '@/components/theme-provider'
 import { MobileNavProvider } from '@/app/context/mobile-nav-context'
 import './globals.css'
-
-const inter = Inter({
-  variable: '--font-inter',
-  subsets: ['latin'],
-})
 
 export const metadata: Metadata = {
   title: 'Navi Chat',
@@ -36,7 +30,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body className={`${inter.variable} font-sans antialiased`}>
+      <body className="font-sans antialiased">
         <ThemeProvider>
           <MobileNavProvider>
             <TooltipProvider>

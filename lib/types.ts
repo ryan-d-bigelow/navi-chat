@@ -16,4 +16,6 @@ export interface Conversation {
   createdAt: number
   updatedAt: number
   sessionKey?: string
+  isPending: boolean
+  streamingMessageId?: string | null
 }

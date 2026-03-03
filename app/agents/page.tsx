@@ -1,9 +1,11 @@
 'use client'
 
 import { SidebarNav } from '@/components/chat/sidebar'
+import { LogViewer } from '@/components/agents/log-viewer'
 import { MobileBottomNav } from '@/components/navigation/mobile-bottom-nav'
 import { Separator } from '@/components/ui/separator'
 import type { AgentInfo, AgentType } from '@/lib/agents'
+import { getLocalConversationSessionKeys, LOCAL_CONVERSATION_INDEX_KEY } from '@/lib/storage'
 import {
   ArrowLeft,
   Bot,
@@ -16,19 +18,16 @@ import {
   Search,
   Terminal,
   Timer,
-  Wifi,
-  WifiOff,
   Zap,
 } from 'lucide-react'
 import { useMobileNav } from '@/app/context/mobile-nav-context'
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, Suspense } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const POLL_INTERVAL = 8_000
-const MAX_LOG_LINES = 5_000
-const BOTTOM_THRESHOLD_PX = 64
+const SLACK_DM_IDLE_MS = 5 * 60 * 1000
 
 // ─── Agent type metadata ──────────────────────────────────────────────────────
 
@@ -121,24 +120,102 @@ function timeAgo(timestamp: number): string {
   return `${days}d ago`
 }
 
+function isSlackDm(agent: AgentInfo): boolean {
+  return agent.agentType === 'slack' && agent.name === 'Slack DM'
+}
+
+function isSlackDmIdle(agent: AgentInfo, now: number): boolean {
+  if (!isSlackDm(agent)) return false
+  const lastActivity = agent.updatedAt ?? agent.startedAt
+  return now - lastActivity > SLACK_DM_IDLE_MS
+}
+
 function getOriginLabel(agent: AgentInfo): string | null {
   if (agent.source === 'process') return 'Local Process'
   if (!agent.sessionKey) return null
   const parts = agent.sessionKey.split(':')
   if (parts[2] === 'cron') return 'Cron Job'
   if (parts[2] === 'slack') return 'Slack'
-  if (parts[2] === 'openai') return 'Web Chat'
-  if (parts[3] === 'thread') return 'Slack Thread'
+  if (parts[2] === 'openai' || parts[2] === 'openai-user') return 'Web Chat'
+  if (parts[3] === 'thread') return agent.name
   return agent.sessionKey
 }
 
-// ─── Types ────────────────────────────────────────────────────────────────────
-
-interface LogLine {
-  type: 'log' | 'thinking' | 'error' | 'tool' | 'system'
-  content: string
-  timestamp: number
+function getConversationAgentLabel(agent: AgentInfo): string | null {
+  if (agent.agentType !== 'slack' && agent.agentType !== 'webchat') return null
+  const key = agent.sessionKey ?? ''
+  if (key.startsWith('agent:main:openai:')) {
+    return agent.model || 'OpenAI'
+  }
+  if (key.startsWith('agent:main:openai-user:')) {
+    return agent.model || 'OpenAI'
+  }
+  if (key.startsWith('agent:main:main:thread:')) {
+    return agent.name
+  }
+  if (agent.model) return agent.model
+  if (agent.agentType === 'slack') return 'Slack'
+  if (agent.agentType === 'webchat') return 'Web Chat'
+  return agent.name
 }
+
+function inferAgentTypeFromSessionKey(sessionKey: string): AgentType {
+  if (sessionKey.includes(':cron:')) return 'cron'
+  if (sessionKey.includes(':slack:') || sessionKey.includes(':thread:')) return 'slack'
+  if (sessionKey.includes(':openai:') || sessionKey.includes(':openai-user:')) return 'webchat'
+  if (sessionKey.startsWith('agent:')) return 'navi'
+  return 'process'
+}
+
+function buildFallbackAgent(agentId: string): AgentInfo | null {
+  const now = Date.now()
+  if (agentId.startsWith('agent:')) {
+    const agentType = inferAgentTypeFromSessionKey(agentId)
+    const name =
+      agentType === 'webchat'
+        ? 'Navi Chat'
+        : agentType === 'slack'
+          ? 'Slack'
+          : agentType === 'cron'
+            ? 'Cron Job'
+            : agentType === 'navi'
+              ? 'Navi'
+              : 'Session'
+    return {
+      id: agentId,
+      name,
+      agentType,
+      status: 'idle',
+      model: '',
+      task: 'Session logs',
+      sessionKey: agentId,
+      updatedAt: now,
+      startedAt: now,
+      pid: 0,
+      source: 'session',
+    }
+  }
+
+  if (agentId.startsWith('proc-')) {
+    const pid = Number.parseInt(agentId.slice(5), 10)
+    return {
+      id: agentId,
+      name: 'Process',
+      agentType: 'process',
+      status: 'idle',
+      model: '',
+      task: 'Process logs',
+      updatedAt: now,
+      startedAt: now,
+      pid: Number.isNaN(pid) ? 0 : pid,
+      source: 'process',
+    }
+  }
+
+  return null
+}
+
+// ─── Types ────────────────────────────────────────────────────────────────────
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
@@ -174,13 +251,18 @@ function AgentCard({
   agent,
   isSelected,
   onSelect,
+  now,
 }: {
   agent: AgentInfo
   isSelected: boolean
   onSelect: () => void
   now: number
 }) {
+  const slackDmIdle = isSlackDmIdle(agent, now)
+  const displayStatus: AgentInfo['status'] = slackDmIdle ? 'idle' : agent.status
   const origin = getOriginLabel(agent)
+  const conversationAgent = getConversationAgentLabel(agent)
+  const modelLabel = conversationAgent ?? agent.model
   const ticket = agent.ticket
   const ticketUrl = ticket ? `https://linear.app/naviagent/issue/${ticket.id}` : null
   const lastSeen =
@@ -200,20 +282,25 @@ function AgentCard({
         }
       }}
       aria-current={isSelected ? 'true' : undefined}
-      aria-label={`${agent.name} — ${agent.status}, ${TYPE_META[agent.agentType].label}`}
+      aria-label={`${agent.name} — ${displayStatus}, ${TYPE_META[agent.agentType].label}`}
       className={`group min-h-[64px] w-full rounded-lg border p-3 text-left transition-all focus-ring ${
         isSelected
           ? 'border-zinc-700 bg-zinc-800 shadow-sm'
           : 'border-transparent hover:border-zinc-800 hover:bg-zinc-800/40'
-      }`}
+      } ${slackDmIdle ? 'opacity-60' : ''}`}
     >
       {/* Row 1: status + name + badge */}
       <div className="flex items-center gap-2">
-        <StatusDot status={agent.status} />
+        <StatusDot status={displayStatus} />
         <span className="flex-1 truncate text-sm font-medium text-zinc-200">
           {agent.name}
         </span>
         <TypeBadge agentType={agent.agentType} />
+        {slackDmIdle && (
+          <span className="rounded-full border border-yellow-500/30 bg-yellow-500/10 px-1.5 py-0.5 text-[10px] font-medium text-yellow-300">
+            Idle
+          </span>
+        )}
       </div>
 
       {/* Row 2: ticket */}
@@ -249,8 +336,10 @@ function AgentCard({
             PID {agent.pid}
           </span>
         )}
-        {agent.model && (
-          <span className="max-w-[100px] truncate">{agent.model.split('/').pop()}</span>
+        {modelLabel && (
+          <span className="max-w-[120px] truncate" title={modelLabel}>
+            {modelLabel.split('/').pop()}
+          </span>
         )}
         {origin && (
           <span className="max-w-[80px] truncate">{origin}</span>
@@ -274,235 +363,25 @@ function AgentCard({
 
 // ─── Log Viewer ───────────────────────────────────────────────────────────────
 
-function LogEntry({ line }: { line: LogLine }) {
-  const ts = new Date(line.timestamp).toLocaleTimeString('en-US', {
-    hour12: false,
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-  })
-
-  const tsEl = (
-    <span className="mr-2 hidden shrink-0 select-none text-zinc-700 sm:inline" aria-hidden="true">{ts}</span>
-  )
-
-  if (line.type === 'thinking') {
-    return (
-      <div className="flex min-w-0 text-purple-400/90" role="listitem">
-        {tsEl}
-        <span className="mr-1.5 select-none" aria-hidden="true">🧠</span>
-        <span className="min-w-0 break-words">{line.content}</span>
-      </div>
-    )
-  }
-  if (line.type === 'error') {
-    return (
-      <div className="flex min-w-0 text-red-400" role="listitem">
-        {tsEl}
-        <span className="mr-1.5 select-none text-red-600" aria-hidden="true">✗</span>
-        <span className="min-w-0 break-words">{line.content}</span>
-      </div>
-    )
-  }
-  if (line.type === 'tool') {
-    return (
-      <div className="flex min-w-0 text-amber-400/80" role="listitem">
-        {tsEl}
-        <span className="mr-1.5 select-none" aria-hidden="true">⚙</span>
-        <span className="min-w-0 break-words">{line.content}</span>
-      </div>
-    )
-  }
-  if (line.type === 'system') {
-    return (
-      <div className="flex min-w-0 text-zinc-600 italic" role="listitem">
-        {tsEl}
-        <span className="min-w-0 break-words">{line.content}</span>
-      </div>
-    )
-  }
-  return (
-    <div className="flex min-w-0 text-zinc-400" role="listitem">
-      {tsEl}
-      <span className="min-w-0 break-words">{line.content}</span>
-    </div>
-  )
-}
-
-function LogViewer({ agent }: { agent: AgentInfo }) {
-  const [lines, setLines] = useState<LogLine[]>([])
-  const [connected, setConnected] = useState(false)
-  const [userScrolled, setUserScrolled] = useState(false)
-
-  const containerRef = useRef<HTMLDivElement>(null)
-  const userScrolledRef = useRef(false) // avoid stale closure in scroll handler
-  const atBottomRef = useRef(true)
-
-  // ── Helpers ──────────────────────────────────────────────────────────────
-
-  const isNearBottom = useCallback(() => {
-    const el = containerRef.current
-    if (!el) return true
-    return el.scrollHeight - el.scrollTop - el.clientHeight < BOTTOM_THRESHOLD_PX
-  }, [])
-
-  const scrollToBottom = useCallback((smooth = false) => {
-    const el = containerRef.current
-    if (!el) return
-    el.scrollTo({ top: el.scrollHeight, behavior: smooth ? 'smooth' : 'instant' })
-    userScrolledRef.current = false
-    setUserScrolled(false)
-    atBottomRef.current = true
-  }, [])
-
-  // ── Scroll detection ──────────────────────────────────────────────────────
-
-  const handleScroll = useCallback(() => {
-    const near = isNearBottom()
-    atBottomRef.current = near
-    if (!near) {
-      userScrolledRef.current = true
-      setUserScrolled(true)
-    } else {
-      userScrolledRef.current = false
-      setUserScrolled(false)
-    }
-  }, [isNearBottom])
-
-  // ── Auto-scroll on new lines ──────────────────────────────────────────────
-  // useLayoutEffect so scroll happens before browser paints (no flicker)
-
-  useLayoutEffect(() => {
-    if (!userScrolledRef.current) {
-      const el = containerRef.current
-      if (el) {
-        el.scrollTo({ top: el.scrollHeight, behavior: 'instant' })
-        atBottomRef.current = true
-      }
-    }
-  }, [lines])
-
-  // ── SSE stream ────────────────────────────────────────────────────────────
-  // State resets are handled by React unmount/remount via the key prop on LogViewer
-
-  useEffect(() => {
-    const es = new EventSource(
-      `/api/agents/${encodeURIComponent(agent.id)}/logs`,
-    )
-
-    es.onopen = () => setConnected(true)
-
-    es.onmessage = (event) => {
-      try {
-        const line: LogLine = JSON.parse(event.data)
-        setLines((prev) => {
-          const next = [...prev, line]
-          return next.length > MAX_LOG_LINES ? next.slice(-MAX_LOG_LINES) : next
-        })
-      } catch {
-        // ignore parse errors
-      }
-    }
-
-    es.onerror = () => {
-      setConnected(false)
-    }
-
-    return () => {
-      es.close()
-    }
-  }, [agent.id])
-
-  return (
-    <div className="flex flex-1 flex-col overflow-hidden">
-      {/* Log toolbar */}
-      <div className="flex shrink-0 items-center gap-2 border-b border-zinc-800/80 bg-zinc-950/50 px-3 py-2 sm:gap-3 sm:px-4">
-        {/* Connection status */}
-        <span className="flex items-center gap-1.5 text-[10px]" role="status" aria-label={connected ? 'Connected — live streaming' : 'Connecting to log stream'}>
-          {connected ? (
-            <>
-              <Wifi className="h-3 w-3 text-emerald-500" aria-hidden="true" />
-              <span className="text-emerald-500">Live</span>
-            </>
-          ) : (
-            <>
-              <WifiOff className="h-3 w-3 text-zinc-600" aria-hidden="true" />
-              <span className="text-zinc-600">Connecting…</span>
-            </>
-          )}
-        </span>
-
-        <span className="text-[10px] text-zinc-600" aria-label={`${lines.length} log lines`}>{lines.length} lines</span>
-
-        <div className="flex-1" />
-
-        {userScrolled && (
-          <button
-            onClick={() => scrollToBottom(true)}
-            aria-label="Scroll to latest log output"
-            className="flex min-h-[44px] items-center gap-1 rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-xs font-medium text-zinc-300 transition-colors hover:bg-zinc-700 focus-ring sm:min-h-0 sm:px-2 sm:py-1 sm:text-[10px]"
-          >
-            <ChevronDown className="h-3 w-3" aria-hidden="true" />
-            Scroll to bottom
-          </button>
-        )}
-
-        {!userScrolled && (
-          <span className="flex items-center gap-1 text-[10px] text-zinc-600" role="status">
-            <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-500 motion-reduce:animate-none" />
-            Following
-          </span>
-        )}
-      </div>
-
-      {/* Log area — relative/absolute pattern for proper flex overflow */}
-      <div className="relative min-h-0 flex-1">
-        <div
-          ref={containerRef}
-          onScroll={handleScroll}
-          role="log"
-          aria-label={`Log output for ${agent.name}`}
-          aria-live="off"
-          className="absolute inset-0 overflow-y-auto bg-zinc-950 p-4 font-mono text-xs leading-[1.6]"
-          style={{ overflowAnchor: 'none' }}
-        >
-          {lines.length === 0 && (
-            <div className="flex h-full items-center justify-center">
-              <p className="text-zinc-700" role="status">Waiting for output…</p>
-            </div>
-          )}
-          {lines.map((line, i) => (
-            <LogEntry key={i} line={line} />
-          ))}
-          <div style={{ height: 0 }} />
-        </div>
-
-        {userScrolled && (
-          <button
-            onClick={() => scrollToBottom(true)}
-            aria-label="Jump to latest log output"
-            className="absolute bottom-4 left-1/2 z-10 flex min-h-[44px] -translate-x-1/2 items-center gap-1.5 rounded-full border border-zinc-700 bg-zinc-800/90 px-4 py-2 text-xs font-medium text-zinc-300 shadow-lg backdrop-blur-sm transition-colors hover:bg-zinc-700 focus-ring sm:min-h-0 sm:px-3 sm:py-1.5"
-          >
-            <ChevronDown className="h-3.5 w-3.5" aria-hidden="true" />
-            Jump to bottom
-          </button>
-        )}
-      </div>
-    </div>
-  )
-}
-
 // ─── Agent detail header ──────────────────────────────────────────────────────
 
 function AgentDetailHeader({ agent }: { agent: AgentInfo }) {
   const meta = TYPE_META[agent.agentType]
   const [elapsed, setElapsed] = useState(() => timeElapsed(agent.startedAt))
+  const [now, setNow] = useState(Date.now())
+  const slackDmIdle = isSlackDmIdle(agent, now)
+  const displayStatus: AgentInfo['status'] = slackDmIdle ? 'idle' : agent.status
 
   useEffect(() => {
     if (agent.status === 'done') return
     const id = setInterval(() => setElapsed(timeElapsed(agent.startedAt)), 1000)
     return () => clearInterval(id)
   }, [agent.startedAt, agent.status])
+
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 30_000)
+    return () => clearInterval(id)
+  }, [])
 
   return (
     <header className="shrink-0 border-b border-zinc-800 bg-zinc-950/60 px-4 py-3">
@@ -517,17 +396,17 @@ function AgentDetailHeader({ agent }: { agent: AgentInfo }) {
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
             <h1 className="text-sm font-semibold text-zinc-100">{agent.name}</h1>
             <div className="flex items-center gap-1.5">
-              <StatusDot status={agent.status} />
+              <StatusDot status={displayStatus} />
               <span
                 className={`text-xs ${
-                  agent.status === 'running'
+                  displayStatus === 'running'
                     ? 'text-emerald-400'
-                    : agent.status === 'idle'
+                    : displayStatus === 'idle'
                       ? 'text-yellow-400'
                       : 'text-zinc-500'
                 }`}
               >
-                {agent.status}
+                {displayStatus}
               </span>
             </div>
             <div className="flex items-center gap-1 text-xs text-zinc-500">
@@ -681,6 +560,7 @@ function AgentsPageInner() {
   const [selectedId, setSelectedId] = useState<string | null>(initialAgentId)
   const [loading, setLoading] = useState(true)
   const [now, setNow] = useState(Date.now())
+  const [localChatSessionKeys, setLocalChatSessionKeys] = useState<Set<string> | null>(null)
   const anchoredStartsRef = useRef<Map<string, number>>(new Map())
 
   // Register back-action for mobile bottom nav
@@ -746,6 +626,22 @@ function AgentsPageInner() {
     return () => clearInterval(tick)
   }, [])
 
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const loadKeys = () => {
+      const keys = getLocalConversationSessionKeys()
+      setLocalChatSessionKeys(new Set(keys))
+    }
+    loadKeys()
+    const handleStorage = (event: StorageEvent) => {
+      if (event.key === LOCAL_CONVERSATION_INDEX_KEY) {
+        loadKeys()
+      }
+    }
+    window.addEventListener('storage', handleStorage)
+    return () => window.removeEventListener('storage', handleStorage)
+  }, [])
+
   // ── Group agents by status ──────────────────────────────────────────────
 
   const anchoredAgents = useMemo(() => {
@@ -757,21 +653,58 @@ function AgentsPageInner() {
     })
   }, [agents])
 
-  const activeAgents = anchoredAgents
-    .filter((a) => a.agentType !== 'slack' && a.agentType !== 'webchat' && a.agentType !== 'cron')
+  const dedupedAgents = useMemo(() => {
+    const registeredByPid = new Set<number>()
+    const registeredByTask = new Set<string>()
+
+    const isRegistered = (agent: AgentInfo) => Boolean(agent.ticket || agent.sessionKey)
+
+    for (const agent of anchoredAgents) {
+      if (!isRegistered(agent)) continue
+      if (agent.pid > 0) registeredByPid.add(agent.pid)
+      if (agent.task) registeredByTask.add(agent.task)
+    }
+
+    return anchoredAgents.filter((agent) => {
+      if (isRegistered(agent)) return true
+      if (agent.pid > 0 && registeredByPid.has(agent.pid)) return false
+      if (agent.task && registeredByTask.has(agent.task)) return false
+      return true
+    })
+  }, [anchoredAgents])
+
+  const filteredAgents = useMemo(() => {
+    if (!localChatSessionKeys || localChatSessionKeys.size === 0) return dedupedAgents
+    return dedupedAgents.filter((agent) => {
+      if (agent.agentType !== 'webchat') return true
+      if (!agent.sessionKey) return true
+      return localChatSessionKeys.has(agent.sessionKey)
+    })
+  }, [dedupedAgents, localChatSessionKeys])
+
+  const activeAgents = filteredAgents.filter(
+    (a) => a.agentType !== 'cron' && a.agentType !== 'slack' && a.agentType !== 'webchat',
+  )
     .sort((a, b) => {
       if (a.agentType === 'navi' && b.agentType !== 'navi') return -1
       if (b.agentType === 'navi' && a.agentType !== 'navi') return 1
       return 0
     })
-  const recentConversations = anchoredAgents.filter(
+  const naviAgents = activeAgents.filter((a) => a.agentType === 'navi')
+  const codingAgents = activeAgents.filter((a) => a.agentType !== 'navi')
+  const recentConversations = filteredAgents.filter(
     (a) => a.agentType === 'slack' || a.agentType === 'webchat',
   )
-  const systemSessions = anchoredAgents.filter((a) => a.agentType === 'cron')
+  const systemSessions = filteredAgents.filter((a) => a.agentType === 'cron')
 
-  const selectedAgent = anchoredAgents.find((a) => a.id === selectedId)
-  const showSessionEnded = Boolean(initialAgentId && !selectedAgent && !loading)
-  const hasDetailView = Boolean(selectedAgent || showSessionEnded)
+  const selectedAgent = filteredAgents.find((a) => a.id === selectedId)
+  const fallbackAgent = useMemo(() => {
+    if (!initialAgentId || selectedAgent) return null
+    return buildFallbackAgent(initialAgentId)
+  }, [initialAgentId, selectedAgent])
+  const effectiveAgent = selectedAgent ?? fallbackAgent
+  const showSessionEnded = Boolean(initialAgentId && !effectiveAgent && !loading)
+  const hasDetailView = Boolean(effectiveAgent || showSessionEnded)
 
   return (
     <div className="flex h-dvh overflow-hidden bg-zinc-900 pb-20 md:pb-0">
@@ -817,11 +750,19 @@ function AgentsPageInner() {
           )}
 
           <AgentGroup
-            label="Active Agents"
-            agents={activeAgents}
+            label="Navi"
+            agents={naviAgents}
             selectedId={selectedId}
             onSelect={setSelectedId}
             now={now}
+          />
+          <AgentGroup
+            label="Coding Agents"
+            agents={codingAgents}
+            selectedId={selectedId}
+            onSelect={setSelectedId}
+            now={now}
+            collapsible
           />
           <AgentGroup
             label="Recent Conversations"
@@ -830,7 +771,6 @@ function AgentsPageInner() {
             onSelect={setSelectedId}
             now={now}
             collapsible
-            defaultCollapsed
           />
           <AgentGroup
             label="System"
@@ -849,7 +789,7 @@ function AgentsPageInner() {
         className={`flex-1 flex-col overflow-hidden ${hasDetailView ? 'flex' : 'hidden md:flex'}`}
         aria-label="Agent details"
       >
-        {selectedAgent ? (
+        {effectiveAgent ? (
           <>
             {/* Mobile back button */}
             <div className="flex shrink-0 items-center gap-2 border-b border-zinc-800/60 bg-zinc-950/60 px-3 py-2 md:hidden">
@@ -862,8 +802,8 @@ function AgentsPageInner() {
                 Agents
               </button>
             </div>
-            <AgentDetailHeader agent={selectedAgent} />
-            <LogViewer key={selectedAgent.id} agent={selectedAgent} />
+            <AgentDetailHeader agent={effectiveAgent} />
+            <LogViewer key={effectiveAgent.id} agent={effectiveAgent} />
           </>
         ) : showSessionEnded && initialAgentId ? (
           <SessionEndedState agentId={initialAgentId} />

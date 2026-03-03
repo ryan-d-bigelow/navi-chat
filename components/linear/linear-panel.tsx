@@ -3,6 +3,7 @@
 import { useRef, useState, useCallback, useEffect, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet'
 import type { LinearIssue } from '@/lib/linear-types'
 import { PRIORITY_CONFIG } from '@/lib/linear-types'
 import type { AgentInfo } from '@/lib/agents'
@@ -285,6 +286,39 @@ function ActiveAgentCard({ op, now }: { op: NaviOp; now: number }) {
   const agentLabel = op.projectName ?? op.title ?? 'Agent'
   const typeLabel = op.taskType ? op.taskType.replace(/_/g, ' ') : 'agent'
   const elapsed = formatElapsed(op.startedAt, now)
+  const ticketNum = op.ticketId?.match(/(\d+)/)?.[1] ?? null
+  const [logOpen, setLogOpen] = useState(false)
+  const [logContent, setLogContent] = useState<string | null>(null)
+  const [logError, setLogError] = useState<string | null>(null)
+  const [logLoading, setLogLoading] = useState(false)
+
+  useEffect(() => {
+    if (!logOpen || !ticketNum) return
+    const controller = new AbortController()
+    const load = async () => {
+      setLogLoading(true)
+      setLogError(null)
+      try {
+        const res = await fetch(`/api/agent-logs/${ticketNum}`, {
+          cache: 'no-store',
+          signal: controller.signal,
+        })
+        const text = await res.text()
+        if (!res.ok) {
+          throw new Error(text || `Failed to load log (HTTP ${res.status})`)
+        }
+        setLogContent(text)
+      } catch (err) {
+        if (controller.signal.aborted) return
+        setLogContent(null)
+        setLogError(err instanceof Error ? err.message : 'Failed to load log')
+      } finally {
+        if (!controller.signal.aborted) setLogLoading(false)
+      }
+    }
+    load()
+    return () => controller.abort()
+  }, [logOpen, ticketNum])
 
   return (
     <div className="flex flex-col gap-2 rounded-lg border border-emerald-500/15 bg-emerald-500/5 px-2.5 py-2 text-xs text-zinc-400">
@@ -305,14 +339,38 @@ function ActiveAgentCard({ op, now }: { op: NaviOp; now: number }) {
       </div>
       <div className="flex items-center gap-2 text-[10px] text-zinc-500">
         <span>PID {op.pid}</span>
-        {op.logPath ? (
-          <a
-            href={`file://${op.logPath}`}
-            className="inline-flex min-h-[28px] items-center gap-1 rounded-md border border-zinc-800 bg-zinc-900/60 px-2 py-1 text-[10px] text-emerald-200 transition-colors hover:border-emerald-500/40 hover:text-emerald-100 focus-ring"
-          >
-            <FileText className="h-3 w-3" aria-hidden="true" />
-            Log
-          </a>
+        {ticketNum ? (
+          <Sheet open={logOpen} onOpenChange={setLogOpen}>
+            <SheetTrigger asChild>
+              <button
+                type="button"
+                className="inline-flex min-h-[28px] items-center gap-1 rounded-md border border-zinc-800 bg-zinc-900/60 px-2 py-1 text-[10px] text-emerald-200 transition-colors hover:border-emerald-500/40 hover:text-emerald-100 focus-ring"
+              >
+                <FileText className="h-3 w-3" aria-hidden="true" />
+                Log
+              </button>
+            </SheetTrigger>
+            <SheetContent
+              side="right"
+              className="w-[92vw] max-w-xl border-zinc-800/80 bg-zinc-950 text-zinc-100"
+            >
+              <SheetHeader className="border-b border-zinc-800/60 pb-3">
+                <SheetTitle className="text-sm">Agent Log · {ticket}</SheetTitle>
+                <SheetDescription className="text-xs text-zinc-500">
+                  PID {op.pid} · NAV-{ticketNum}
+                </SheetDescription>
+              </SheetHeader>
+              <div className="flex-1 overflow-auto px-4 pb-4">
+                {logLoading && <p className="text-xs text-zinc-400">Loading log…</p>}
+                {logError && <p className="text-xs text-red-400">{logError}</p>}
+                {!logLoading && !logError && logContent !== null && (
+                  <pre className="whitespace-pre-wrap break-words text-[11px] leading-relaxed text-zinc-200">
+                    {logContent.trim().length > 0 ? logContent : 'Log is empty.'}
+                  </pre>
+                )}
+              </div>
+            </SheetContent>
+          </Sheet>
         ) : (
           <span className="text-zinc-600">Log unavailable</span>
         )}
