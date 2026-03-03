@@ -74,6 +74,9 @@ export default function ChatPage() {
   const [pendingStream, setPendingStream] = useState<PendingStream | null>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
   const activeIdRef = useRef<string | null>(null)
+  // Captures the session ID at request time so onFinish saves to the
+  // originating session even if the user switches sessions mid-stream.
+  const requestSessionIdRef = useRef<string | null>(null)
   const canvasCommandCountRef = useRef(0)
 
   // Keep ref in sync for use in callbacks
@@ -227,8 +230,10 @@ export default function ChatPage() {
     },
     onFinish: ({ message }) => {
       const content = getTextContent(message)
-      const currentActiveId = activeIdRef.current
-      if (!currentActiveId) return
+      // Use the session ID captured at send time, NOT the current active
+      // session — the user may have switched sessions while streaming.
+      const originatingSessionId = requestSessionIdRef.current
+      if (!originatingSessionId) return
 
       const msg: ChatMessage = {
         id: message.id,
@@ -239,10 +244,10 @@ export default function ChatPage() {
 
       // Check if already saved (from SSE)
       setConversations((prev) => {
-        const conv = prev.find((c) => c.id === currentActiveId)
+        const conv = prev.find((c) => c.id === originatingSessionId)
         if (conv?.messages.some((m) => m.id === message.id)) return prev
         return prev.map((c) => {
-          if (c.id !== currentActiveId) return c
+          if (c.id !== originatingSessionId) return c
           return {
             ...c,
             messages: [...c.messages, msg],
@@ -252,7 +257,7 @@ export default function ChatPage() {
       })
 
       // Persist to API (fire-and-forget)
-      saveMessage(currentActiveId, msg)
+      saveMessage(originatingSessionId, msg)
     },
   })
 
@@ -415,6 +420,10 @@ export default function ChatPage() {
 
     // Reset canvas command counter for new response
     canvasCommandCountRef.current = 0
+
+    // Capture session ID at send time so onFinish saves to this session
+    // even if the user switches to a different session while streaming.
+    requestSessionIdRef.current = currentActiveId
 
     setInput('')
     sendMessage({ text })
