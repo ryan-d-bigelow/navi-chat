@@ -100,17 +100,20 @@ function HtmlRenderer({ html }: { html: string }) {
       <html>
       <head>
         <meta charset="utf-8"/>
+        <meta name="viewport" content="width=device-width, initial-scale=1"/>
         <style>
           *, *::before, *::after { box-sizing: border-box; }
           body { margin: 0; padding: 16px; font-family: system-ui, sans-serif;
-                 background: #09090b; color: #e4e4e7; font-size: 14px; line-height: 1.6; }
+                 background: #09090b; color: #e4e4e7; font-size: 14px; line-height: 1.6;
+                 max-width: 100%; overflow-wrap: break-word; }
           a { color: #60a5fa; }
-          img { max-width: 100%; height: auto; }
-          table { border-collapse: collapse; width: 100%; }
+          img, video, canvas, svg, iframe { max-width: 100%; height: auto; }
+          table { border-collapse: collapse; width: 100%; display: block; overflow-x: auto; }
           th, td { border: 1px solid #3f3f46; padding: 8px; text-align: left; }
           th { background: #18181b; }
           pre { background: #18181b; padding: 12px; border-radius: 8px; overflow-x: auto; }
           code { font-family: ui-monospace, monospace; font-size: 13px; }
+          @media (max-width: 640px) { body { padding: 12px; } }
         </style>
       </head>
       <body>${html}</body>
@@ -145,7 +148,7 @@ export function CanvasPanel({ canvas, onClose, isStreaming }: CanvasPanelProps) 
   const hasContent = canvas.url !== null || canvas.content !== null
 
   return (
-    <div className="flex h-full w-[420px] shrink-0 flex-col border-l border-zinc-800 bg-zinc-950">
+    <div className="flex h-full w-full min-w-0 flex-col border-l border-zinc-800 bg-zinc-950 md:w-[420px] md:shrink-0">
       {/* Header */}
       <div className="flex items-center justify-between border-b border-zinc-800 px-3 py-3">
         <div className="flex items-center gap-2">
@@ -196,18 +199,18 @@ export function CanvasPanel({ canvas, onClose, isStreaming }: CanvasPanelProps) 
       )}
 
       {canvas.url && (
-        <div className="flex-1 overflow-hidden">
+        <div className="flex-1 min-h-0 overflow-hidden">
           <IframeRenderer url={canvas.url} />
         </div>
       )}
 
       {!canvas.url && canvas.content && (
         isHtml(canvas.content) ? (
-          <div className="flex-1 overflow-hidden">
+          <div className="flex-1 min-h-0 overflow-hidden">
             <HtmlRenderer html={canvas.content} />
           </div>
         ) : (
-          <ScrollArea className="flex-1">
+          <ScrollArea className="flex-1 min-h-0">
             <MarkdownRenderer content={canvas.content} />
           </ScrollArea>
         )

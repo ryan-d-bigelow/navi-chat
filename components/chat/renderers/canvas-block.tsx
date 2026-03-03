@@ -7,23 +7,26 @@ const DEFAULT_CANVAS_HEIGHT = 240
 
 const BASE_STYLES = `
 *, *::before, *::after { box-sizing: border-box; }
-html, body { margin: 0; padding: 0; height: auto; }
+html, body { margin: 0; padding: 0; height: auto; width: 100%; }
 body {
   background: #18181b;
   color: #f4f4f5;
   font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   font-size: 14px;
   line-height: 1.6;
+  max-width: 100%;
+  overflow-wrap: break-word;
 }
-#navi-canvas-root { padding: 16px; }
+#navi-canvas-root { padding: 16px; max-width: 100%; }
 a { color: #60a5fa; }
-img, video, canvas { max-width: 100%; height: auto; }
+img, video, canvas, svg, iframe { max-width: 100%; height: auto; }
 pre { background: #0f172a; padding: 12px; border-radius: 10px; overflow-x: auto; }
 code { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace; font-size: 13px; }
 hr { border: 0; border-top: 1px solid #3f3f46; margin: 12px 0; }
-table { width: 100%; border-collapse: collapse; }
+table { width: 100%; border-collapse: collapse; display: block; overflow-x: auto; }
 th, td { border: 1px solid #3f3f46; padding: 8px; text-align: left; }
 th { background: #27272a; }
+@media (max-width: 640px) { #navi-canvas-root { padding: 12px; } }
 `
 
 function buildSrcDoc(content: string): string {
@@ -31,6 +34,7 @@ function buildSrcDoc(content: string): string {
 <html>
 <head>
   <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
   <style>${BASE_STYLES}</style>
 </head>
 <body>

@@ -374,6 +374,16 @@ export default function ChatPage() {
     [activeId, setMessages]
   )
 
+  const handleRenameConversation = useCallback(
+    (id: string, title: string) => {
+      updateConversationTitle(id, title)
+      setConversations((prev) =>
+        prev.map((c) => (c.id === id ? { ...c, title } : c))
+      )
+    },
+    []
+  )
+
   const handleFormSubmit = useCallback(() => {
     const text = input.trim()
     if (!text) return
@@ -464,6 +474,7 @@ export default function ChatPage() {
           onSelect={handleSelectConversation}
           onNew={handleNewChat}
           onDelete={handleDeleteConversation}
+          onRename={handleRenameConversation}
         />
       </div>
 
@@ -477,6 +488,7 @@ export default function ChatPage() {
             onSelect={handleSelectConversation}
             onNew={handleNewChat}
             onDelete={handleDeleteConversation}
+            onRename={handleRenameConversation}
           />
         </SheetContent>
       </Sheet>
