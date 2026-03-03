@@ -110,6 +110,17 @@ function timeElapsed(startedAt: number): string {
   return `${hours}h ${minutes % 60}m`
 }
 
+function timeAgo(timestamp: number): string {
+  const seconds = Math.max(0, Math.floor((Date.now() - timestamp) / 1000))
+  if (seconds < 60) return `${seconds}s ago`
+  const minutes = Math.floor(seconds / 60)
+  if (minutes < 60) return `${minutes}m ago`
+  const hours = Math.floor(minutes / 60)
+  if (hours < 24) return `${hours}h ago`
+  const days = Math.floor(hours / 24)
+  return `${days}d ago`
+}
+
 function getOriginLabel(agent: AgentInfo): string | null {
   if (agent.source === 'process') return 'Local Process'
   if (!agent.sessionKey) return null
@@ -172,6 +183,10 @@ function AgentCard({
   const origin = getOriginLabel(agent)
   const ticket = agent.ticket
   const ticketUrl = ticket ? `https://linear.app/naviagent/issue/${ticket.id}` : null
+  const lastSeen =
+    agent.source === 'session'
+      ? timeAgo(agent.updatedAt ?? agent.startedAt)
+      : timeElapsed(agent.startedAt)
 
   return (
     <div
@@ -242,7 +257,7 @@ function AgentCard({
         )}
         <span className="ml-auto flex items-center gap-0.5">
           <Clock className="h-2.5 w-2.5" aria-hidden="true" />
-          {timeElapsed(agent.startedAt)}
+          {lastSeen}
         </span>
       </div>
     </div>
@@ -713,9 +728,17 @@ function AgentsPageInner() {
     })
   }, [agents])
 
-  const running = anchoredAgents.filter((a) => a.status === 'running')
-  const idle = anchoredAgents.filter((a) => a.status === 'idle')
-  const done = anchoredAgents.filter((a) => a.status === 'done')
+  const activeAgents = anchoredAgents
+    .filter((a) => a.agentType !== 'slack' && a.agentType !== 'webchat' && a.agentType !== 'cron')
+    .sort((a, b) => {
+      if (a.agentType === 'navi' && b.agentType !== 'navi') return -1
+      if (b.agentType === 'navi' && a.agentType !== 'navi') return 1
+      return 0
+    })
+  const recentConversations = anchoredAgents.filter(
+    (a) => a.agentType === 'slack' || a.agentType === 'webchat',
+  )
+  const systemSessions = anchoredAgents.filter((a) => a.agentType === 'cron')
 
   const selectedAgent = anchoredAgents.find((a) => a.id === selectedId)
 
@@ -763,15 +786,15 @@ function AgentsPageInner() {
           )}
 
           <AgentGroup
-            label="Running"
-            agents={running}
+            label="Active Agents"
+            agents={activeAgents}
             selectedId={selectedId}
             onSelect={setSelectedId}
             now={now}
           />
           <AgentGroup
-            label="Idle"
-            agents={idle}
+            label="Recent Conversations"
+            agents={recentConversations}
             selectedId={selectedId}
             onSelect={setSelectedId}
             now={now}
@@ -779,8 +802,8 @@ function AgentsPageInner() {
             defaultCollapsed
           />
           <AgentGroup
-            label="Done"
-            agents={done}
+            label="System"
+            agents={systemSessions}
             selectedId={selectedId}
             onSelect={setSelectedId}
             now={now}
