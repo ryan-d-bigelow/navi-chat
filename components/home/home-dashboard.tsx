@@ -138,19 +138,19 @@ export function HomeDashboard() {
   const agentsReady = agents.state.status === 'ready'
 
   return (
-    <div className="min-h-dvh overflow-y-auto bg-zinc-950 text-zinc-100">
-      <div className="mx-auto flex w-full flex-col gap-8 px-4 py-8 sm:px-6 sm:py-10 md:py-14">
+    <div className="min-h-dvh overflow-x-hidden overflow-y-auto bg-zinc-950 text-zinc-100">
+      <div className="mx-auto flex w-full flex-col gap-6 px-4 pb-24 pt-6 sm:gap-8 sm:px-6 sm:py-10 md:pb-14 md:pt-14">
         <header className="flex flex-col gap-6">
-          <div className="flex flex-wrap items-center justify-between gap-6">
-            <div>
+          <div className="flex flex-wrap items-start justify-between gap-4 sm:gap-6">
+            <div className="min-w-0 flex-1">
               <p className="text-xs font-semibold uppercase tracking-[0.3em] text-emerald-300/70">
                 Navi Command
               </p>
-              <div className="mt-2 flex flex-wrap items-center gap-3">
-                <h1 className="text-3xl font-semibold text-white md:text-4xl">
+              <div className="mt-2 flex flex-wrap items-center gap-2 sm:gap-3">
+                <h1 className="text-2xl font-semibold text-white sm:text-3xl md:text-4xl">
                   Hey Ryan 🧚
                 </h1>
-                <span className="rounded-full border border-zinc-800 bg-zinc-900/80 px-3 py-1 text-xs text-zinc-400">
+                <span className="rounded-full border border-zinc-800 bg-zinc-900/80 px-2.5 py-0.5 text-[11px] text-zinc-400 sm:px-3 sm:py-1 sm:text-xs">
                   {date} · {time}
                 </span>
               </div>
@@ -174,48 +174,48 @@ export function HomeDashboard() {
             </div>
           </div>
 
-          <div className="grid gap-4 md:grid-cols-2">
-            <Button asChild size="lg" className="h-16 justify-between rounded-2xl bg-emerald-500 text-zinc-950 hover:bg-emerald-400">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4">
+            <Button asChild size="lg" className="h-14 justify-between rounded-2xl bg-emerald-500 text-zinc-950 hover:bg-emerald-400 sm:h-16">
               <Link href="/chat">
-                <span className="flex items-center gap-3 text-lg font-semibold">
-                  <Sparkles className="h-5 w-5" aria-hidden="true" />
+                <span className="flex items-center gap-2 text-base font-semibold sm:gap-3 sm:text-lg">
+                  <Sparkles className="h-4 w-4 sm:h-5 sm:w-5" aria-hidden="true" />
                   New Task
                 </span>
-                <ArrowUpRight className="h-5 w-5" aria-hidden="true" />
+                <ArrowUpRight className="h-4 w-4 sm:h-5 sm:w-5" aria-hidden="true" />
               </Link>
             </Button>
-            <Button asChild size="lg" className="h-16 justify-between rounded-2xl bg-zinc-800 text-white hover:bg-zinc-700">
+            <Button asChild size="lg" className="h-14 justify-between rounded-2xl bg-zinc-800 text-white hover:bg-zinc-700 sm:h-16">
               <Link href="/agents">
-                <span className="flex items-center gap-3 text-lg font-semibold">
-                  <Bot className="h-5 w-5" aria-hidden="true" />
+                <span className="flex items-center gap-2 text-base font-semibold sm:gap-3 sm:text-lg">
+                  <Bot className="h-4 w-4 sm:h-5 sm:w-5" aria-hidden="true" />
                   Check Agents
                 </span>
-                <ArrowUpRight className="h-5 w-5" aria-hidden="true" />
+                <ArrowUpRight className="h-4 w-4 sm:h-5 sm:w-5" aria-hidden="true" />
               </Link>
             </Button>
-            <Button asChild size="lg" className="h-16 justify-between rounded-2xl border border-zinc-700 bg-zinc-900 text-white hover:bg-zinc-800">
+            <Button asChild size="lg" className="h-14 justify-between rounded-2xl border border-zinc-700 bg-zinc-900 text-white hover:bg-zinc-800 sm:h-16">
               <Link href="/chat">
-                <span className="flex items-center gap-3 text-lg font-semibold">
-                  <Home className="h-5 w-5" aria-hidden="true" />
+                <span className="flex items-center gap-2 text-base font-semibold sm:gap-3 sm:text-lg">
+                  <Home className="h-4 w-4 sm:h-5 sm:w-5" aria-hidden="true" />
                   Home Controls
                 </span>
-                <ArrowUpRight className="h-5 w-5" aria-hidden="true" />
+                <ArrowUpRight className="h-4 w-4 sm:h-5 sm:w-5" aria-hidden="true" />
               </Link>
             </Button>
-            <Button asChild size="lg" className="h-16 justify-between rounded-2xl border border-emerald-400/40 bg-emerald-500/10 text-emerald-200 hover:bg-emerald-500/20">
+            <Button asChild size="lg" className="h-14 justify-between rounded-2xl border border-emerald-400/40 bg-emerald-500/10 text-emerald-200 hover:bg-emerald-500/20 sm:h-16">
               <a href="https://linear.app" target="_blank" rel="noreferrer">
-                <span className="flex items-center gap-3 text-lg font-semibold">
-                  <ClipboardList className="h-5 w-5" aria-hidden="true" />
+                <span className="flex items-center gap-2 text-base font-semibold sm:gap-3 sm:text-lg">
+                  <ClipboardList className="h-4 w-4 sm:h-5 sm:w-5" aria-hidden="true" />
                   View Tickets
                 </span>
-                <ArrowUpRight className="h-5 w-5" aria-hidden="true" />
+                <ArrowUpRight className="h-4 w-4 sm:h-5 sm:w-5" aria-hidden="true" />
               </a>
             </Button>
           </div>
         </header>
 
-        <section className="grid gap-6 lg:grid-cols-3">
-          <div className="rounded-3xl border border-zinc-800/70 bg-zinc-900/60 p-6 shadow-[0_0_30px_rgba(15,23,42,0.4)]">
+        <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 sm:gap-6 lg:grid-cols-3">
+          <div className="overflow-hidden rounded-2xl border border-zinc-800/70 bg-zinc-900/60 p-4 shadow-[0_0_30px_rgba(15,23,42,0.4)] sm:rounded-3xl sm:p-6">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2 text-sm font-semibold text-white">
                 <Zap className="h-4 w-4 text-emerald-400" aria-hidden="true" />
@@ -270,7 +270,7 @@ export function HomeDashboard() {
             </div>
           </div>
 
-          <div className="rounded-3xl border border-zinc-800/70 bg-zinc-900/60 p-6">
+          <div className="overflow-hidden rounded-2xl border border-zinc-800/70 bg-zinc-900/60 p-4 sm:rounded-3xl sm:p-6">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2 text-sm font-semibold text-white">
                 <ClipboardList className="h-4 w-4 text-sky-400" aria-hidden="true" />
@@ -321,7 +321,7 @@ export function HomeDashboard() {
             </div>
           </div>
 
-          <div className="rounded-3xl border border-zinc-800/70 bg-zinc-900/60 p-6">
+          <div className="overflow-hidden rounded-2xl border border-zinc-800/70 bg-zinc-900/60 p-4 sm:rounded-3xl sm:p-6">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2 text-sm font-semibold text-white">
                 <Home className="h-4 w-4 text-amber-300" aria-hidden="true" />

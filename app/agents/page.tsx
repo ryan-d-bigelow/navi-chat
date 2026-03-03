@@ -20,6 +20,7 @@ import {
   WifiOff,
   Zap,
 } from 'lucide-react'
+import { useMobileNav } from '@/app/context/mobile-nav-context'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
 
@@ -614,6 +615,18 @@ function AgentsPageInner() {
   const [now, setNow] = useState(Date.now())
   const anchoredStartsRef = useRef<Map<string, number>>(new Map())
 
+  // Register back-action for mobile bottom nav
+  const { registerAgentBack } = useMobileNav()
+
+  useEffect(() => {
+    if (selectedId !== null) {
+      registerAgentBack(() => setSelectedId(null))
+    } else {
+      registerAgentBack(null)
+    }
+    return () => registerAgentBack(null)
+  }, [selectedId, registerAgentBack])
+
   // ── Fetch agents ────────────────────────────────────────────────────────
 
   const fetchAgents = useCallback(async () => {
@@ -633,14 +646,14 @@ function AgentsPageInner() {
           if (!seen.has(id)) anchors.delete(id)
         }
         setAgents(data)
-        // Auto-select: prefer initialAgentId if it exists in the list, else first agent
+        // Auto-select: prefer initialAgentId if it exists in the list, else null (no auto-select on mobile)
         setSelectedId((prev) => {
           if (prev) return prev
           if (initialAgentId) {
             const found = data.find((a) => a.id === initialAgentId)
             if (found) return found.id
           }
-          return data[0]?.id ?? null
+          return null
         })
       }
     } catch {
