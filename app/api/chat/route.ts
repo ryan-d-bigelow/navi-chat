@@ -4,7 +4,7 @@ import { z } from 'zod'
 import { broadcast } from '@/lib/sse'
 import { startStream, appendStreamChunk, finishStream } from '@/lib/streaming-buffer'
 import { updateConversationSessionId } from '@/lib/db'
-import { readFileSync, existsSync } from 'fs'
+import { readFileSync, existsSync, createReadStream, statSync } from 'fs'
 import { homedir } from 'os'
 import path from 'path'
 
@@ -24,7 +24,7 @@ function findLatestOpenAISession(): string | null {
     const sessions = JSON.parse(raw) as Record<string, { sessionId: string; updatedAt: number }>
     let latest: { sessionId: string; updatedAt: number } | null = null
     for (const [key, session] of Object.entries(sessions)) {
-      if (!key.startsWith('agent:main:openai:')) continue
+      if (!key.startsWith('agent:main:openai:') && !key.startsWith('agent:main:openai-user:')) continue
       if (!latest || session.updatedAt > latest.updatedAt) {
         latest = session
       }
@@ -33,6 +33,40 @@ function findLatestOpenAISession(): string | null {
   } catch {
     return null
   }
+}
+
+function findOpenAiSessionIdForConversation(conversationId: string): string | null {
+  const sessionsPath = path.join(homedir(), '.openclaw/agents/main/sessions/sessions.json')
+  if (!existsSync(sessionsPath)) return null
+  const normalizedId = conversationId.trim().toLowerCase()
+  if (!normalizedId) return null
+  const sessionKey = `agent:main:openai-user:${normalizedId}`
+  try {
+    const raw = readFileSync(sessionsPath, 'utf-8')
+    const sessions = JSON.parse(raw) as Record<string, { sessionId?: string }>
+    const entry = sessions[sessionKey]
+    return entry?.sessionId ?? null
+  } catch {
+    return null
+  }
+}
+
+function findOpenAiSessionFileForConversation(conversationId: string): string | null {
+  const sessionsPath = path.join(homedir(), '.openclaw/agents/main/sessions/sessions.json')
+  if (!existsSync(sessionsPath)) return null
+  const normalizedId = conversationId.trim().toLowerCase()
+  if (!normalizedId) return null
+  const sessionKey = `agent:main:openai-user:${normalizedId}`
+  try {
+    const raw = readFileSync(sessionsPath, 'utf-8')
+    const sessions = JSON.parse(raw) as Record<string, { sessionFile?: string }>
+    const entry = sessions[sessionKey]
+    const sessionFile = entry?.sessionFile
+    if (sessionFile && existsSync(sessionFile)) return sessionFile
+  } catch {
+    return null
+  }
+  return null
 }
 
 type MessagePart = { type: string; text?: string }
@@ -46,6 +80,13 @@ type InboundMessage = {
 type ReasoningChunk = { type: 'reasoning-delta'; reasoning?: string; text?: string }
 type ToolCallChunk = { type: 'tool-call'; toolName?: string; name?: string }
 type ToolInputStartChunk = { type: 'tool-input-start'; toolName?: string; name?: string }
+
+type SessionLogEntry =
+  | {
+      type: 'message'
+      message?: { content?: Array<{ type?: string; thinking?: string }> }
+    }
+  | { type: 'thinking'; thinking?: string }
 
 /** Extract plain text from any message format the Vercel AI SDK might send */
 function extractText(msg: InboundMessage): string {
@@ -61,6 +102,103 @@ function extractText(msg: InboundMessage): string {
   }
   // Fallback
   return msg.text ?? ''
+}
+
+function extractThinkingBlocks(line: string): string[] {
+  if (!line.trim()) return []
+  let obj: SessionLogEntry
+  try {
+    obj = JSON.parse(line) as SessionLogEntry
+  } catch {
+    return []
+  }
+
+  if (obj.type === 'thinking') {
+    return typeof obj.thinking === 'string' ? [obj.thinking] : []
+  }
+
+  if (obj.type === 'message') {
+    const content = obj.message?.content
+    if (!Array.isArray(content)) return []
+    return content
+      .filter((block) => block?.type === 'thinking' && typeof block.thinking === 'string')
+      .map((block) => block.thinking as string)
+  }
+
+  return []
+}
+
+function startThinkingWatcher(conversationId: string) {
+  let stopped = false
+  let pollTimer: NodeJS.Timeout | null = null
+  let tailTimer: NodeJS.Timeout | null = null
+  let sessionPath: string | null = null
+  let lastSize = 0
+  let pending = ''
+  let lastThinking = ''
+
+  const stop = () => {
+    stopped = true
+    if (pollTimer) clearInterval(pollTimer)
+    if (tailTimer) clearInterval(tailTimer)
+  }
+
+  const readNew = () => {
+    if (stopped || !sessionPath) return
+    try {
+      const size = statSync(sessionPath).size
+      if (size <= lastSize) return
+      const stream = createReadStream(sessionPath, { start: lastSize, end: size - 1 })
+      let buf = ''
+      stream.on('data', (chunk: string | Buffer) => {
+        buf += Buffer.isBuffer(chunk) ? chunk.toString('utf-8') : chunk
+      })
+      stream.on('end', () => {
+        lastSize = size
+        const combined = pending + buf
+        const lines = combined.split('\n')
+        pending = lines.pop() ?? ''
+        for (const line of lines) {
+          const thinkingBlocks = extractThinkingBlocks(line)
+          for (const text of thinkingBlocks) {
+            const trimmed = text.trim()
+            if (!trimmed || trimmed === lastThinking) continue
+            lastThinking = trimmed
+            broadcast({
+              type: 'thinking_update',
+              payload: {
+                conversation_id: conversationId,
+                text: trimmed,
+              },
+            })
+          }
+        }
+      })
+      stream.on('error', () => {
+        // ignore read errors; next poll will retry
+      })
+    } catch {
+      // file may be missing or truncated; ignore
+    }
+  }
+
+  const maybeStart = () => {
+    if (stopped) return
+    if (!sessionPath) {
+      const found = findOpenAiSessionFileForConversation(conversationId)
+      if (!found) return
+      sessionPath = found
+      try {
+        lastSize = statSync(sessionPath).size
+      } catch {
+        lastSize = 0
+      }
+      tailTimer = setInterval(readNew, 400)
+    }
+  }
+
+  pollTimer = setInterval(maybeStart, 300)
+  return stop
 }
 
 export async function POST(req: Request) {
@@ -87,9 +225,13 @@ export async function POST(req: Request) {
     startStream(conversationId)
   }
 
+  const thinkingStopper = conversationId ? startThinkingWatcher(conversationId) : null
+  const openaiUser = conversationId ? conversationId.trim().toLowerCase() : undefined
+
   const result = streamText({
     model: openclaw.chat('agent:main'),
     messages: finalMessages,
+    providerOptions: openaiUser ? { openai: { user: openaiUser } } : undefined,
     tools: {
       canvas: {
         description:
@@ -168,12 +310,14 @@ export async function POST(req: Request) {
       }
     },
     onFinish: () => {
+      thinkingStopper?.()
       if (conversationId) {
         finishStream(conversationId)
         // Give OpenClaw a moment to flush session state, then link the session
         const capturedConversationId = conversationId
         setTimeout(() => {
-          const sessionId = findLatestOpenAISession()
+          const sessionId =
+            findOpenAiSessionIdForConversation(capturedConversationId) ?? findLatestOpenAISession()
           if (sessionId) {
             updateConversationSessionId(capturedConversationId, sessionId)
             broadcast({
@@ -185,6 +329,7 @@ export async function POST(req: Request) {
       }
     },
     onError: () => {
+      thinkingStopper?.()
       if (conversationId) {
         finishStream(conversationId)
       }
