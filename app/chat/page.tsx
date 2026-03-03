@@ -30,6 +30,7 @@ import type { SyncEvent } from '@/lib/sse'
 import { useChat } from '@ai-sdk/react'
 import { DefaultChatTransport } from 'ai'
 import type { UIMessage } from 'ai'
+import { NotificationToggle } from '@/components/notifications/notification-toggle'
 import { LayoutList, Menu, PanelRight } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
@@ -507,6 +508,7 @@ export default function ChatPage() {
           <span className="text-lg" role="img" aria-label="Navi">🧚</span>
           <h1 className="text-sm font-semibold tracking-tight text-zinc-200">Navi Chat</h1>
           <div className="flex-1" />
+          <NotificationToggle />
           <button
             onClick={handleCanvasToggle}
             aria-label={canvas.visible ? 'Hide canvas panel' : 'Show canvas panel'}
