@@ -169,7 +169,7 @@ export function CanvasPanel({ canvas, onClose, isStreaming }: CanvasPanelProps) 
               href={canvas.url}
               target="_blank"
               rel="noopener noreferrer"
-              className="rounded p-1.5 text-zinc-500 transition-colors hover:bg-zinc-800 hover:text-zinc-300"
+              className="flex min-h-[44px] min-w-[44px] items-center justify-center rounded text-zinc-500 transition-colors hover:bg-zinc-800 hover:text-zinc-300"
               title="Open in new tab"
             >
               <ExternalLink className="h-3.5 w-3.5" />
@@ -177,7 +177,7 @@ export function CanvasPanel({ canvas, onClose, isStreaming }: CanvasPanelProps) 
           )}
           <button
             onClick={onClose}
-            className="rounded p-1.5 text-zinc-500 transition-colors hover:bg-zinc-800 hover:text-zinc-300"
+            className="flex min-h-[44px] min-w-[44px] items-center justify-center rounded text-zinc-500 transition-colors hover:bg-zinc-800 hover:text-zinc-300"
             title="Close canvas"
           >
             <PanelRightClose className="h-3.5 w-3.5" />

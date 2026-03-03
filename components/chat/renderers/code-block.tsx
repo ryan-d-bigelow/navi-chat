@@ -21,12 +21,12 @@ export function CodeBlock({ language, children }: CodeBlockProps) {
 
   return (
     <div className="group relative mb-3 overflow-x-auto rounded-lg border border-zinc-700/50 last:mb-0">
-      <div className="flex items-center justify-between bg-zinc-800/80 px-4 py-1.5">
+      <div className="flex items-center justify-between bg-zinc-800/80 px-4 py-2 sm:py-1.5">
         <span className="text-xs text-zinc-400">{language}</span>
         <button
           onClick={handleCopy}
           aria-label={copied ? 'Copied to clipboard' : `Copy ${language} code`}
-          className="flex items-center gap-1 rounded px-1.5 py-0.5 text-xs text-zinc-400 transition-colors hover:bg-zinc-700 hover:text-zinc-200 focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-800"
+          className="flex min-h-[44px] items-center gap-1 rounded px-3 py-2 text-xs text-zinc-400 transition-colors hover:bg-zinc-700 hover:text-zinc-200 focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-800 sm:min-h-0 sm:px-1.5 sm:py-0.5"
         >
           {copied ? (
             <>
