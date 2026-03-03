@@ -443,6 +443,7 @@ export function Sidebar({
                                 onRename(conv.id, title)
                               }}
                               onCancelRename={() => setEditingId(null)}
+                              onAgentSelect={onAgentSelect}
                             />
                           </li>
                         )
@@ -541,6 +542,7 @@ function ConversationItem({
   onStartRename,
   onRename,
   onCancelRename,
+  onAgentSelect,
 }: {
   conversation: Conversation
   isActive: boolean
@@ -553,6 +555,7 @@ function ConversationItem({
   onStartRename: () => void
   onRename: (title: string) => void
   onCancelRename: () => void
+  onAgentSelect?: (agentId: string) => void
 }) {
   const router = useRouter()
   const editInputRef = useRef<HTMLInputElement>(null)

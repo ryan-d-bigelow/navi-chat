@@ -51,13 +51,6 @@ type ToolCallPart = { type: 'tool-call'; toolName?: string; name?: string }
 
 type AgentStatus = 'running' | 'idle' | 'done'
 
-interface AgentInfo {
-  id: string
-  sessionKey?: string
-  source: 'session' | 'process'
-  status: AgentStatus
-}
-
 const AGENT_REFRESH_MS = 30_000
 const SPLIT_RATIO_KEY = 'navi.chat.splitRatio'
 const SPLIT_MIN = 0.45
