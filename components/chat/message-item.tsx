@@ -34,16 +34,42 @@ function getUserText(message: UIMessage): string {
     .join('')
 }
 
+function stripUserLabelPrefix(message: UIMessage, text: string): string {
+  if (!text) return text
+  const meta = message.metadata as Record<string, unknown> | undefined
+  const rawCandidates = [
+    meta?.name,
+    meta?.label,
+    meta?.userName,
+    (message as { name?: unknown }).name,
+  ]
+  const candidates = rawCandidates.filter(
+    (value): value is string => typeof value === 'string' && value.trim().length > 0
+  )
+  if (candidates.length === 0) return text
+
+  const trimmed = text.trimStart()
+  for (const candidate of candidates) {
+    const prefix = `${candidate.trim()}:`
+    if (trimmed.startsWith(prefix)) {
+      return trimmed.slice(prefix.length).trimStart()
+    }
+  }
+
+  return text
+}
+
 export function MessageItem({ message, isStreaming }: MessageItemProps) {
   const isUser = message.role === 'user'
 
   if (isUser) {
+    const userText = stripUserLabelPrefix(message, getUserText(message))
     return (
-      <article aria-label="You said" className="animate-fade-in">
+      <article aria-label="You" className="animate-fade-in">
         <div className="flex justify-end">
           <div className="max-w-[80%] rounded-2xl bg-zinc-700/80 px-4 py-3">
             <p className="whitespace-pre-wrap text-sm leading-[1.6] text-zinc-100">
-              {getUserText(message)}
+              {userText}
             </p>
           </div>
         </div>

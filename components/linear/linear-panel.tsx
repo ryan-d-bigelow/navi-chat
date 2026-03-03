@@ -6,7 +6,7 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import type { LinearIssue } from '@/lib/linear-types'
 import { PRIORITY_CONFIG } from '@/lib/linear-types'
 import type { AgentInfo } from '@/lib/agents'
-import { ExternalLink, FileText, RefreshCw, Terminal, X } from 'lucide-react'
+import { ChevronDown, ExternalLink, FileText, RefreshCw, Terminal, X } from 'lucide-react'
 
 function TickerTitle({ title }: { title: string }) {
   const containerRef = useRef<HTMLSpanElement>(null)
@@ -60,6 +60,7 @@ const REFRESH_INTERVAL = 60_000
 
 const HOME_LABELS = ['home', 'home assistant', 'honey-do']
 const BLOCKED_STATE_ID = '153e998a-f390-4dc6-8b51-1ecadff78cbb'
+const DEFAULT_COLLAPSED_SECTIONS = new Set(['home', 'backlog', 'blocked'])
 
 function isHomeIssue(issue: LinearIssue): boolean {
   return issue.labels.nodes.some((l) =>
@@ -227,16 +228,43 @@ function IssueCard({
   )
 }
 
-function SectionHeader({ label, count, muted }: { label: string; count: number; muted?: boolean }) {
+function SectionHeader({
+  label,
+  count,
+  muted,
+  collapsed,
+  onToggle,
+  controlsId,
+}: {
+  label: string
+  count: number
+  muted?: boolean
+  collapsed: boolean
+  onToggle: () => void
+  controlsId: string
+}) {
   return (
-    <div className={`flex items-center gap-2 px-2 py-2 ${muted ? 'opacity-50' : ''}`} role="heading" aria-level={3}>
-      <span className="text-[11px] font-semibold uppercase tracking-wider text-zinc-400">
-        {label}
-      </span>
-      <span className="rounded bg-zinc-800 px-1.5 py-0.5 text-[10px] font-medium text-zinc-400" aria-label={`${count} issues`}>
-        {count}
-      </span>
-      <div className="h-px flex-1 bg-zinc-800" aria-hidden="true" />
+    <div className={`px-2 py-2 ${muted ? 'opacity-50' : ''}`} role="heading" aria-level={3}>
+      <button
+        type="button"
+        className="group flex w-full items-center gap-2 rounded-md text-left focus-ring"
+        aria-label={`Toggle ${label}`}
+        aria-expanded={!collapsed}
+        aria-controls={controlsId}
+        onClick={onToggle}
+      >
+        <ChevronDown
+          className={`h-3.5 w-3.5 text-zinc-500 transition-transform group-hover:text-zinc-300 ${collapsed ? '-rotate-90' : ''}`}
+          aria-hidden="true"
+        />
+        <span className="text-[11px] font-semibold uppercase tracking-wider text-zinc-400">
+          {label}
+        </span>
+        <span className="rounded bg-zinc-800 px-1.5 py-0.5 text-[10px] font-medium text-zinc-400" aria-label={`${count} issues`}>
+          {count}
+        </span>
+        <div className="h-px flex-1 bg-zinc-800" aria-hidden="true" />
+      </button>
     </div>
   )
 }
@@ -317,8 +345,24 @@ export function LinearPanel({ onClose }: LinearPanelProps) {
   const [error, setError] = useState<string | null>(null)
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
   const [now, setNow] = useState(() => Date.now())
+  const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({})
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const router = useRouter()
+
+  const isSectionCollapsed = useCallback(
+    (key: string, label: string) => {
+      if (key in collapsedSections) return collapsedSections[key]
+      return DEFAULT_COLLAPSED_SECTIONS.has(label.toLowerCase())
+    },
+    [collapsedSections],
+  )
+
+  const toggleSection = useCallback((key: string, label: string) => {
+    setCollapsedSections((prev) => {
+      const current = key in prev ? prev[key] : DEFAULT_COLLAPSED_SECTIONS.has(label.toLowerCase())
+      return { ...prev, [key]: !current }
+    })
+  }, [])
 
   const fetchIssues = useCallback(async (silent = false) => {
     if (silent) setRefreshing(true)
@@ -373,6 +417,7 @@ export function LinearPanel({ onClose }: LinearPanelProps) {
   const homeIssues = issues.filter(isHomeIssue)
   const workGroups = groupIssues(workIssues)
   const homeGroups = groupIssues(homeIssues)
+  const homeCount = homeGroups.reduce((sum, group) => sum + group.issues.length, 0)
 
   const runningAgentByTicket = useMemo(() => {
     const map = new Map<string, AgentInfo>()
@@ -430,15 +475,23 @@ export function LinearPanel({ onClose }: LinearPanelProps) {
       </header>
 
       {/* Body */}
-      <ScrollArea className="flex-1">
+      <ScrollArea className="flex-1 overflow-y-auto">
         {!loading && !error && ops.length > 0 && (
           <section aria-label="Active agents" className="border-b border-zinc-800/60 px-3 py-3">
-            <SectionHeader label="Active Agents" count={ops.length} />
-            <div className="mt-2 space-y-2">
-              {ops.map((op) => (
-                <ActiveAgentCard key={`${op.ticketId ?? 'untracked'}-${op.pid}`} op={op} now={now} />
-              ))}
-            </div>
+            <SectionHeader
+              label="Active Agents"
+              count={ops.length}
+              collapsed={isSectionCollapsed('active-agents', 'Active Agents')}
+              onToggle={() => toggleSection('active-agents', 'Active Agents')}
+              controlsId="active-agents-content"
+            />
+            {!isSectionCollapsed('active-agents', 'Active Agents') && (
+              <div id="active-agents-content" className="mt-2 space-y-2">
+                {ops.map((op) => (
+                  <ActiveAgentCard key={`${op.ticketId ?? 'untracked'}-${op.pid}`} op={op} now={now} />
+                ))}
+              </div>
+            )}
           </section>
         )}
 
@@ -472,35 +525,21 @@ export function LinearPanel({ onClose }: LinearPanelProps) {
 
         {!loading && !error && issues.length > 0 && (
           <div className="py-2">
-            {workGroups.map((group) => (
-              <section key={group.type} aria-label={group.label} className={group.muted ? 'opacity-60' : ''}>
-                <SectionHeader label={group.label} count={group.issues.length} muted={group.muted} />
-                <div className="mb-2 px-1">
-                  {group.issues.map((issue) => (
-                    <IssueCard
-                      key={issue.id}
-                      issue={issue}
-                      runningAgent={['started', 'blocked'].includes(group.type) ? runningAgentByTicket.get(issue.identifier) : undefined}
-                      onAgentClick={['started', 'blocked'].includes(group.type) ? handleAgentClick : undefined}
-                    />
-                  ))}
-                </div>
-              </section>
-            ))}
-
-            {homeGroups.length > 0 && (
-              <>
-                <div className="mx-2 my-3 flex items-center gap-2" aria-hidden="true">
-                  <div className="h-px flex-1 bg-zinc-700" />
-                  <span className="text-xs font-semibold text-zinc-400">
-                    <span role="img" aria-label="Home">🏠</span> Home
-                  </span>
-                  <div className="h-px flex-1 bg-zinc-700" />
-                </div>
-                {homeGroups.map((group) => (
-                  <section key={`home-${group.type}`} aria-label={`Home: ${group.label}`} className={group.muted ? 'opacity-60' : ''}>
-                    <SectionHeader label={group.label} count={group.issues.length} muted={group.muted} />
-                    <div className="mb-2 px-1">
+            {workGroups.map((group) => {
+              const sectionKey = `work-${group.type}`
+              const collapsed = isSectionCollapsed(sectionKey, group.label)
+              return (
+                <section key={group.type} aria-label={group.label} className={group.muted ? 'opacity-60' : ''}>
+                  <SectionHeader
+                    label={group.label}
+                    count={group.issues.length}
+                    muted={group.muted}
+                    collapsed={collapsed}
+                    onToggle={() => toggleSection(sectionKey, group.label)}
+                    controlsId={`${sectionKey}-content`}
+                  />
+                  {!collapsed && (
+                    <div id={`${sectionKey}-content`} className="mb-2 px-1">
                       {group.issues.map((issue) => (
                         <IssueCard
                           key={issue.id}
@@ -510,9 +549,53 @@ export function LinearPanel({ onClose }: LinearPanelProps) {
                         />
                       ))}
                     </div>
-                  </section>
-                ))}
-              </>
+                  )}
+                </section>
+              )
+            })}
+
+            {homeGroups.length > 0 && (
+              <section aria-label="Home" className="mt-3 border-t border-zinc-800/60 pt-2">
+                <SectionHeader
+                  label="Home"
+                  count={homeCount}
+                  collapsed={isSectionCollapsed('home', 'Home')}
+                  onToggle={() => toggleSection('home', 'Home')}
+                  controlsId="home-content"
+                />
+                {!isSectionCollapsed('home', 'Home') && (
+                  <div id="home-content">
+                    {homeGroups.map((group) => {
+                      const sectionKey = `home-${group.type}`
+                      const collapsed = isSectionCollapsed(sectionKey, group.label)
+                      return (
+                        <section key={`home-${group.type}`} aria-label={`Home: ${group.label}`} className={group.muted ? 'opacity-60' : ''}>
+                          <SectionHeader
+                            label={group.label}
+                            count={group.issues.length}
+                            muted={group.muted}
+                            collapsed={collapsed}
+                            onToggle={() => toggleSection(sectionKey, group.label)}
+                            controlsId={`${sectionKey}-content`}
+                          />
+                          {!collapsed && (
+                            <div id={`${sectionKey}-content`} className="mb-2 px-1">
+                              {group.issues.map((issue) => (
+                                <IssueCard
+                                  key={issue.id}
+                                  issue={issue}
+                                  runningAgent={['started', 'blocked'].includes(group.type) ? runningAgentByTicket.get(issue.identifier) : undefined}
+                                  onAgentClick={['started', 'blocked'].includes(group.type) ? handleAgentClick : undefined}
+                                />
+                              ))}
+                            </div>
+                          )}
+                        </section>
+                      )
+                    })}
+                  </div>
+                )}
+              </section>
             )}
           </div>
         )}

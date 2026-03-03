@@ -714,7 +714,7 @@ function AgentsPageInner() {
           if (!seen.has(id)) anchors.delete(id)
         }
         setAgents(data)
-        // Auto-select: match by sessionId (agent.id) or sessionKey (stable after pruning)
+        // Auto-select: match by id or sessionKey (stable across pruning)
         setSelectedId((prev) => {
           if (prev) return prev
           if (initialAgentId) {
@@ -770,13 +770,15 @@ function AgentsPageInner() {
   const systemSessions = anchoredAgents.filter((a) => a.agentType === 'cron')
 
   const selectedAgent = anchoredAgents.find((a) => a.id === selectedId)
+  const showSessionEnded = Boolean(initialAgentId && !selectedAgent && !loading)
+  const hasDetailView = Boolean(selectedAgent || showSessionEnded)
 
   return (
     <div className="flex h-dvh overflow-hidden bg-zinc-900 pb-20 md:pb-0">
       {/* ── Left panel — always visible on md+, toggles on mobile ──── */}
       <nav
         aria-label="Agent list"
-        className={`glass flex w-full flex-col overflow-hidden border-r border-zinc-800/60 md:w-[280px] md:shrink-0 ${selectedAgent ? 'hidden md:flex' : 'flex'}`}
+        className={`glass flex w-full flex-col overflow-hidden border-r border-zinc-800/60 md:w-[280px] md:shrink-0 ${hasDetailView ? 'hidden md:flex' : 'flex'}`}
       >
         <SidebarNav />
         <Separator className="shrink-0 bg-zinc-800/60" />
@@ -844,7 +846,7 @@ function AgentsPageInner() {
 
       {/* ── Right panel — always visible on md+, toggles on mobile ── */}
       <main
-        className={`flex-1 flex-col overflow-hidden ${selectedAgent ? 'flex' : 'hidden md:flex'}`}
+        className={`flex-1 flex-col overflow-hidden ${hasDetailView ? 'flex' : 'hidden md:flex'}`}
         aria-label="Agent details"
       >
         {selectedAgent ? (
@@ -863,7 +865,7 @@ function AgentsPageInner() {
             <AgentDetailHeader agent={selectedAgent} />
             <LogViewer key={selectedAgent.id} agent={selectedAgent} />
           </>
-        ) : initialAgentId && !loading ? (
+        ) : showSessionEnded && initialAgentId ? (
           <SessionEndedState agentId={initialAgentId} />
         ) : (
           <EmptyState hasAgents={agents.length > 0} />

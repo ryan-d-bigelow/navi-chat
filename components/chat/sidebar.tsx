@@ -142,6 +142,7 @@ export function Sidebar({
   liveProcessAgentIds,
 }: SidebarProps) {
   const [search, setSearch] = useState('')
+  const [recentOnly, setRecentOnly] = useState(true)
   const [pendingDeleteIds, setPendingDeleteIds] = useState<Set<string>>(
     () => new Set()
   )
@@ -157,6 +158,24 @@ export function Sidebar({
     Older: false,
   }))
 
+  // Restore recentOnly preference from localStorage
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const stored = window.localStorage.getItem(SIDEBAR_RECENT_ONLY_KEY)
+    if (stored !== null) setRecentOnly(stored === 'true')
+  }, [])
+
+  // Persist recentOnly preference
+  const toggleRecentOnly = useCallback(() => {
+    setRecentOnly((prev) => {
+      const next = !prev
+      if (typeof window !== 'undefined') {
+        window.localStorage.setItem(SIDEBAR_RECENT_ONLY_KEY, String(next))
+      }
+      return next
+    })
+  }, [])
+
   // Filter & group
   const filtered = useMemo(() => {
     let items = conversations.filter((c) => !pendingDeleteIds.has(c.id))
@@ -164,8 +183,19 @@ export function Sidebar({
       const q = search.toLowerCase()
       items = items.filter((c) => c.title.toLowerCase().includes(q))
     }
+    // When recentOnly is active and not searching, only show recently active conversations
+    if (recentOnly && !search.trim()) {
+      items = items.filter((c) => isRecentlyActive(c.updatedAt))
+    }
     return items
-  }, [conversations, pendingDeleteIds, search])
+  }, [conversations, pendingDeleteIds, search, recentOnly])
+
+  // Count of hidden older conversations (for the toggle button)
+  const olderCount = useMemo(() => {
+    if (!recentOnly || search.trim()) return 0
+    const nonDeleted = conversations.filter((c) => !pendingDeleteIds.has(c.id))
+    return nonDeleted.length - nonDeleted.filter((c) => isRecentlyActive(c.updatedAt)).length
+  }, [conversations, pendingDeleteIds, recentOnly, search])
 
   const groups = useMemo(() => groupByDate(filtered), [filtered])
 
@@ -333,7 +363,13 @@ export function Sidebar({
       {/* BUG FIX: overflow-hidden on ScrollArea root constrains height so viewport scrolls */}
       <ScrollArea className="min-h-0 flex-1 overflow-hidden">
         {filtered.length === 0 ? (
-          <EmptyState hasSearch={search.trim().length > 0} query={search} />
+          <EmptyState
+            hasSearch={search.trim().length > 0}
+            query={search}
+            recentOnly={recentOnly}
+            olderCount={olderCount}
+            onShowAll={toggleRecentOnly}
+          />
         ) : (
           <ul
             role="listbox"
@@ -414,6 +450,25 @@ export function Sidebar({
                 </div>
               </li>
             ))}
+
+            {/* Toggle to show/hide older conversations */}
+            {!search.trim() && (
+              <li role="presentation" className="mt-2 px-2">
+                <button
+                  type="button"
+                  onClick={toggleRecentOnly}
+                  className="flex w-full items-center justify-center gap-1.5 rounded-md py-2 text-[11px] text-zinc-500 transition-colors hover:bg-zinc-800/40 hover:text-zinc-400 focus-ring"
+                >
+                  <ChevronDown
+                    className={`h-3 w-3 transition-transform ${recentOnly ? '' : 'rotate-180'}`}
+                    aria-hidden="true"
+                  />
+                  {recentOnly
+                    ? `Show older conversations${olderCount > 0 ? ` (${olderCount})` : ''}`
+                    : 'Recent only'}
+                </button>
+              </li>
+            )}
           </ul>
         )}
       </ScrollArea>
@@ -426,9 +481,15 @@ export function Sidebar({
 function EmptyState({
   hasSearch,
   query,
+  recentOnly,
+  olderCount,
+  onShowAll,
 }: {
   hasSearch: boolean
   query: string
+  recentOnly: boolean
+  olderCount: number
+  onShowAll: () => void
 }) {
   if (hasSearch) {
     return (
@@ -437,6 +498,21 @@ function EmptyState({
         <p className="text-xs text-zinc-500">
           No chats matching &ldquo;{query}&rdquo;
         </p>
+      </div>
+    )
+  }
+  if (recentOnly && olderCount > 0) {
+    return (
+      <div className="flex flex-col items-center gap-2 px-4 py-10 text-center">
+        <MessageSquare className="h-8 w-8 text-zinc-600" />
+        <p className="text-sm font-medium text-zinc-400">No recent conversations</p>
+        <p className="text-xs text-zinc-500">Nothing active in the last 30 minutes</p>
+        <button
+          onClick={onShowAll}
+          className="mt-1 rounded-md px-3 py-1.5 text-xs text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-300 focus-ring"
+        >
+          Show older ({olderCount})
+        </button>
       </div>
     )
   }
@@ -530,6 +606,7 @@ function ConversationItem({
   }
 
   const timeLabel = timeAgo(conversation.updatedAt)
+  const recentlyActive = isRecentlyActive(conversation.updatedAt)
   const hasSessionMatch = !!conversation.sessionKey && liveAgentSessions.has(conversation.sessionKey)
   const processFallbackId = liveProcessAgentIds[0]
   const botTargetId = hasSessionMatch ? conversation.sessionKey : processFallbackId
@@ -584,7 +661,12 @@ function ConversationItem({
             </TooltipContent>
           </Tooltip>
         )}
-        <p className="mt-0.5 text-xs text-zinc-500">{timeLabel}</p>
+        <p className="mt-0.5 flex items-center gap-1 text-xs text-zinc-500">
+          {recentlyActive && (
+            <span className="inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-400" aria-label="Recently active" />
+          )}
+          {timeLabel}
+        </p>
       </button>
 
       {/* BUG FIX: action buttons wrapped in a flex container with pr-1.5

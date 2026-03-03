@@ -57,6 +57,28 @@ interface ToolInvocationPart {
   }
 }
 
+type CanvasArgs = {
+  action?: unknown
+  content?: unknown
+  url?: unknown
+  title?: unknown
+}
+
+interface ToolCanvasPart {
+  type: 'tool-canvas'
+  state: string
+  input?: CanvasArgs
+  output?: CanvasArgs
+}
+
+interface DynamicToolPart {
+  type: 'dynamic-tool'
+  toolName: string
+  state: string
+  input?: CanvasArgs
+  output?: CanvasArgs
+}
+
 function isToolInvocationPart(part: unknown): part is ToolInvocationPart {
   if (typeof part !== 'object' || part === null) return false
   const p = part as Record<string, unknown>
@@ -64,6 +86,35 @@ function isToolInvocationPart(part: unknown): part is ToolInvocationPart {
   const inv = p.toolInvocation
   if (typeof inv !== 'object' || inv === null) return false
   return true
+}
+
+function isToolCanvasPart(part: unknown): part is ToolCanvasPart {
+  if (typeof part !== 'object' || part === null) return false
+  const p = part as Record<string, unknown>
+  return p.type === 'tool-canvas'
+}
+
+function isDynamicToolPart(part: unknown): part is DynamicToolPart {
+  if (typeof part !== 'object' || part === null) return false
+  const p = part as Record<string, unknown>
+  return p.type === 'dynamic-tool' && typeof p.toolName === 'string'
+}
+
+function parseCanvasArgs(args: CanvasArgs | undefined): CanvasCommand | null {
+  if (!args) return null
+  const action = typeof args.action === 'string' ? args.action : undefined
+  if (action !== 'present' && action !== 'hide' && action !== 'navigate') return null
+
+  return {
+    action,
+    content: typeof args.content === 'string' ? args.content : undefined,
+    url: typeof args.url === 'string' ? args.url : undefined,
+    title: typeof args.title === 'string' ? args.title : undefined,
+  }
+}
+
+function isReadyToolState(state: string | undefined): boolean {
+  return state !== 'input-streaming'
 }
 
 /**
@@ -74,20 +125,26 @@ export function extractCanvasCommands(message: UIMessage): CanvasCommand[] {
   const commands: CanvasCommand[] = []
 
   for (const part of message.parts) {
-    if (!isToolInvocationPart(part)) continue
-    const { toolName, args } = part.toolInvocation
-    if (toolName !== 'canvas') continue
-
-    const action = args.action as string | undefined
-    if (action !== 'present' && action !== 'hide' && action !== 'navigate')
+    if (isToolInvocationPart(part)) {
+      const { toolName, args } = part.toolInvocation
+      if (toolName !== 'canvas') continue
+      const cmd = parseCanvasArgs(args as CanvasArgs)
+      if (cmd) commands.push(cmd)
       continue
+    }
 
-    commands.push({
-      action,
-      content: typeof args.content === 'string' ? args.content : undefined,
-      url: typeof args.url === 'string' ? args.url : undefined,
-      title: typeof args.title === 'string' ? args.title : undefined,
-    })
+    if (isToolCanvasPart(part)) {
+      if (!isReadyToolState(part.state)) continue
+      const cmd = parseCanvasArgs(part.output ?? part.input)
+      if (cmd) commands.push(cmd)
+      continue
+    }
+
+    if (isDynamicToolPart(part) && part.toolName === 'canvas') {
+      if (!isReadyToolState(part.state)) continue
+      const cmd = parseCanvasArgs(part.output ?? part.input)
+      if (cmd) commands.push(cmd)
+    }
   }
 
   return commands

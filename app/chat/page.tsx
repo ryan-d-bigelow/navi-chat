@@ -215,11 +215,11 @@ export default function ChatPage() {
       const processIds: string[] = []
       for (const agent of data) {
         if (agent.status === 'running' || agent.status === 'idle') {
-          // Add sessionKey (stable across pruning) for conversation matching,
-          // and agent.id (sessionId UUID) for process agent fallback
-          if (agent.sessionKey) next.add(agent.sessionKey)
-          next.add(agent.id)
+          // Prefer stable session keys for conversations; keep process IDs for fallbacks.
+          const sessionKey = agent.sessionKey ?? agent.id
+          next.add(sessionKey)
           if (agent.source === 'process') {
+            next.add(agent.id)
             processIds.push(agent.id)
           }
         }

@@ -190,7 +190,7 @@ export function CanvasPanel({ canvas, onClose, isStreaming }: CanvasPanelProps) 
 
       {/* Body */}
       {!hasContent && (
-        <div className="flex flex-1 flex-col items-center justify-center text-center">
+        <div className="flex flex-1 flex-col items-center justify-center px-6 py-6 text-center">
           <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-xl bg-zinc-800/50">
             <span className="text-2xl">🎨</span>
           </div>
