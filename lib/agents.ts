@@ -22,6 +22,7 @@ export interface AgentInfo {
   status: 'running' | 'idle' | 'done'
   model: string
   task: string
+  ticket?: { id: string; title: string }
   sessionKey?: string
   startedAt: number
   pid: number
