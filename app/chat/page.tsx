@@ -297,6 +297,36 @@ function ChatPageInner() {
     () => agents.filter((agent) => agent.status !== 'done'),
     [agents]
   )
+
+  // Find the single agent linked to the current conversation
+  const conversationAgent = useMemo<AgentInfo | null>(() => {
+    if (!activeConversation) return null
+
+    // Match by sessionKey
+    if (activeConversation.sessionKey) {
+      const match = agents.find(
+        (a) => a.sessionKey === activeConversation.sessionKey || a.id === activeConversation.sessionKey
+      )
+      if (match) return match
+    }
+
+    // Match by ticket number in conversation title (e.g. "NAV-152")
+    const ticketMatch = activeConversation.title.match(/\b(NAV-\d+)\b/i)
+    if (ticketMatch) {
+      const ticketNum = ticketMatch[1].toUpperCase()
+      const match = agents.find(
+        (a) => a.ticket?.id?.toUpperCase() === ticketNum
+      )
+      if (match) return match
+    }
+
+    return null
+  }, [activeConversation, agents])
+
+  const panelAgents = useMemo(
+    () => (conversationAgent ? [conversationAgent] : []),
+    [conversationAgent]
+  )
   const showChatPanel = isDesktop || mobilePanel === 'chat'
   const showLogsPanel = (isDesktop && logsOpen) || (!isDesktop && mobilePanel === 'logs')
   const logsToggleActive = isDesktop ? logsOpen : mobilePanel === 'logs'
@@ -972,9 +1002,11 @@ function ChatPageInner() {
               }`}
             >
               Logs
-              <span className="ml-2 rounded-full bg-zinc-800 px-2 py-0.5 text-[10px] text-zinc-400">
-                {activeAgents.length}
-              </span>
+              {conversationAgent && (
+                <span className="ml-2 rounded-full bg-zinc-800 px-2 py-0.5 text-[10px] text-zinc-400">
+                  1
+                </span>
+              )}
             </button>
           </div>
         )}
@@ -1117,9 +1149,11 @@ function ChatPageInner() {
             >
               <header className="flex items-center justify-between gap-2 border-b border-zinc-800/60 bg-zinc-950/80 px-3 py-2.5">
                 <div className="min-w-0">
-                  <p className="text-xs font-semibold text-zinc-200">Agent Logs</p>
+                  <p className="text-xs font-semibold text-zinc-200">Agent Log</p>
                   <p className="truncate text-[10px] text-zinc-500">
-                    {activeAgents.length} active {activeAgents.length === 1 ? 'agent' : 'agents'}
+                    {conversationAgent
+                      ? conversationAgent.ticket?.id ?? conversationAgent.name
+                      : 'No linked agent'}
                   </p>
                 </div>
                 <button
@@ -1137,11 +1171,18 @@ function ChatPageInner() {
                 </button>
               </header>
               <div className="min-h-0 flex-1 overflow-y-auto p-3">
-                <AgentLogStack
-                  agents={activeAgents}
-                  selectedAgentId={selectedAgentId}
-                  onSelect={(id) => setSelectedAgentId(id)}
-                />
+                {panelAgents.length > 0 ? (
+                  <AgentLogStack
+                    agents={panelAgents}
+                    selectedAgentId={selectedAgentId}
+                    onSelect={(id) => setSelectedAgentId(id)}
+                  />
+                ) : (
+                  <div className="flex flex-col items-center justify-center gap-2 py-16 text-center">
+                    <Bot className="h-6 w-6 text-zinc-700" aria-hidden="true" />
+                    <p className="text-xs text-zinc-500">No agent for this conversation</p>
+                  </div>
+                )}
               </div>
             </aside>
           )}
