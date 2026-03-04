@@ -104,9 +104,15 @@ function extractNumberedOptions(text: string): ActionOption[] | null {
 
 const OR_PATTERN_RE = /\b(.{3,60}?)\s+or\s+(.{3,60})\?/i
 
+// Questions starting with these are asking about state, not offering choices
+const INTERROGATIVE_STARTS = /^(do|does|did|is|are|was|were|has|have|had|can|could|would|should|will|what|how|why|when|where|which)\b/i
+
 function extractOrOptions(text: string): ActionOption[] | null {
   const lastQuestion = findLastQuestionBlock(text)
   if (!lastQuestion) return null
+
+  // Skip if the question starts with an interrogative — it's asking about state, not offering choices
+  if (INTERROGATIVE_STARTS.test(lastQuestion.trim())) return null
 
   const match = lastQuestion.match(OR_PATTERN_RE)
   if (!match) return null
