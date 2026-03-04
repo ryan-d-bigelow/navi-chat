@@ -822,19 +822,11 @@ function ChatPageInner() {
 
   // Action buttons: detect actionable questions in the last assistant message
   const actionOptions = useMemo(() => {
-    if (isActivePending || isPendingStream) {
-      console.log('[action-buttons] blocked:', { isActivePending, isPendingStream })
-      return null
-    }
+    if (isActivePending || isPendingStream) return null
     // Only show when the last message is from the assistant
     const last = displayMessages.at(-1)
-    if (!last || last.role !== 'assistant') {
-      console.log('[action-buttons] no assistant msg, last role:', last?.role)
-      return null
-    }
-    const result = detectActionOptions(displayAssistantText)
-    console.log('[action-buttons] detect:', { textLen: displayAssistantText.length, result, textTail: displayAssistantText.slice(-80) })
-    return result
+    if (!last || last.role !== 'assistant') return null
+    return detectActionOptions(displayAssistantText)
   }, [displayAssistantText, displayMessages, isActivePending, isPendingStream])
 
   const thinkingTextFromParts = useMemo(() => {
