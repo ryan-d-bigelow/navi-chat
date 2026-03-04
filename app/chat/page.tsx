@@ -1,5 +1,6 @@
 'use client'
 
+import { ActionButtons } from '@/components/chat/action-buttons'
 import { ChatInput } from '@/components/chat/chat-input'
 import { MessageList } from '@/components/chat/message-list'
 import { Sidebar } from '@/components/chat/sidebar'
@@ -23,6 +24,7 @@ import {
 import type { Conversation, ChatMessage } from '@/lib/types'
 import type { AgentInfo } from '@/lib/agents'
 import type { SyncEvent } from '@/lib/sse'
+import { detectActionOptions } from '@/lib/action-buttons'
 import { useMobileNav } from '@/app/context/mobile-nav-context'
 import { useChat } from '@ai-sdk/react'
 import { DefaultChatTransport } from 'ai'
@@ -70,7 +72,13 @@ function getTextContent(message: UIMessage): string {
     .map((p) => p.text)
     .join('')
   if (fromParts.length > 0) return fromParts
-  const content = (message as { content?: string }).content
+  const content = (message as { content?: string | Array<{ type?: string; text?: string }> }).content
+  if (Array.isArray(content)) {
+    return content
+      .filter((p) => p?.type === 'text')
+      .map((p) => p?.text ?? '')
+      .join('')
+  }
   return typeof content === 'string' ? content : ''
 }
 
@@ -364,6 +372,24 @@ function ChatPageInner() {
       if (match) return match
     }
 
+    // Fallback: if the conversation has a sessionKey but no matching agent
+    // (e.g. agent session expired from the 30-min window), create a synthetic
+    // entry so the log panel can still stream logs from the session file.
+    if (activeConversation.sessionKey) {
+      return {
+        id: activeConversation.sessionKey,
+        name: 'Navi Chat',
+        agentType: 'webchat' as const,
+        status: 'done' as const,
+        model: '',
+        task: activeConversation.title,
+        sessionKey: activeConversation.sessionKey,
+        startedAt: activeConversation.createdAt,
+        pid: 0,
+        source: 'session' as const,
+      }
+    }
+
     return null
   }, [activeConversation, agents])
 
@@ -458,6 +484,11 @@ function ChatPageInner() {
       saveMessage(originatingSessionId, msg)
       setStreamingConversationId((prev) =>
         prev === originatingSessionId ? null : prev
+      )
+      // Clear pending stream immediately so action buttons can appear without
+      // waiting for the SSE message_appended round-trip.
+      setPendingStream((prev) =>
+        prev?.conversationId === originatingSessionId ? null : prev
       )
     },
   })
@@ -569,12 +600,17 @@ function ChatPageInner() {
   }, [refreshAgents])
 
   useEffect(() => {
+    const matchesAgent = (id: string) =>
+      agents.some((a) => a.id === id || a.sessionKey === id)
+
     if (!selectedAgentId) {
       const sessionKey = activeConversation?.sessionKey
-      if (sessionKey) setSelectedAgentId(sessionKey)
+      if (sessionKey && matchesAgent(sessionKey)) {
+        setSelectedAgentId(sessionKey)
+      }
       return
     }
-    if (!agents.some((agent) => agent.id === selectedAgentId)) {
+    if (!matchesAgent(selectedAgentId)) {
       setSelectedAgentId(null)
     }
   }, [activeConversation?.sessionKey, agents, selectedAgentId])
@@ -784,6 +820,23 @@ function ChatPageInner() {
     return lastAssistant ? getTextContent(lastAssistant) : ''
   }, [displayMessages])
 
+  // Action buttons: detect actionable questions in the last assistant message
+  const actionOptions = useMemo(() => {
+    if (isActivePending || isPendingStream) {
+      console.log('[action-buttons] blocked:', { isActivePending, isPendingStream })
+      return null
+    }
+    // Only show when the last message is from the assistant
+    const last = displayMessages.at(-1)
+    if (!last || last.role !== 'assistant') {
+      console.log('[action-buttons] no assistant msg, last role:', last?.role)
+      return null
+    }
+    const result = detectActionOptions(displayAssistantText)
+    console.log('[action-buttons] detect:', { textLen: displayAssistantText.length, result, textTail: displayAssistantText.slice(-80) })
+    return result
+  }, [displayAssistantText, displayMessages, isActivePending, isPendingStream])
+
   const thinkingTextFromParts = useMemo(() => {
     if (!isActiveStreaming) return null
     const last = messages.at(-1)
@@ -910,16 +963,20 @@ function ChatPageInner() {
 
   const handleDeleteConversation = useCallback(
     (id: string) => {
-      deleteConversation(id)
+      deleteConversation(id).catch((err) =>
+        console.error('[navi-chat] failed to delete conversation:', err)
+      )
       setConversations((prev) => prev.filter((c) => c.id !== id))
-      if (activeId === id) {
+      // Use ref to avoid stale closure when called from sidebar's delayed timer
+      if (activeIdRef.current === id) {
         setActiveId(null)
+        activeIdRef.current = null
         setMessages([])
         setMobileView('list')
         updateUrlForConversation(null)
       }
     },
-    [activeId, setMessages, updateUrlForConversation]
+    [setMessages, updateUrlForConversation]
   )
 
   const handleRenameConversation = useCallback(
@@ -932,8 +989,8 @@ function ChatPageInner() {
     []
   )
 
-  const handleFormSubmit = useCallback(() => {
-    const text = input.trim()
+  const handleFormSubmit = useCallback((overrideText?: string) => {
+    const text = (overrideText ?? input).trim()
     if (!text) return
 
     let currentActiveId = activeId
@@ -1006,6 +1063,13 @@ function ChatPageInner() {
       }
     )
   }, [activeId, input, sendMessage, conversations])
+
+  const handleActionSelect = useCallback(
+    (value: string) => {
+      handleFormSubmit(value)
+    },
+    [handleFormSubmit]
+  )
 
   return (
     <div className="flex h-dvh bg-zinc-900">
@@ -1212,6 +1276,14 @@ function ChatPageInner() {
 
             {/* Input — sticky at bottom */}
             <div id="chat-input" className="mx-auto w-full max-w-3xl px-4 pb-[calc(env(safe-area-inset-bottom)+5rem)] pt-2 sm:px-6 md:pb-[calc(env(safe-area-inset-bottom)+1rem)]">
+              {actionOptions && !input.trim() && (
+                <div className="mb-2">
+                  <ActionButtons
+                    options={actionOptions}
+                    onSelect={handleActionSelect}
+                  />
+                </div>
+              )}
               <ChatInput
                 input={input}
                 setInput={setInput}

@@ -30,12 +30,14 @@ import { toast } from 'sonner'
 const RECENT_THRESHOLD_MS = 30 * 60 * 1000 // 30 minutes
 const SIDEBAR_RECENT_ONLY_KEY = 'navi.sidebar.recentOnly'
 
-function isRecentlyActive(timestamp: number): boolean {
-  return Date.now() - timestamp < RECENT_THRESHOLD_MS
+function isRecentlyActive(timestamp: number, now: number | null): boolean {
+  if (now == null) return true
+  return now - timestamp < RECENT_THRESHOLD_MS
 }
 
-function timeAgo(timestamp: number): string {
-  const seconds = Math.floor((Date.now() - timestamp) / 1000)
+function timeAgo(timestamp: number, now: number | null): string {
+  if (now == null) return '...'
+  const seconds = Math.floor((now - timestamp) / 1000)
   if (seconds < 60) return 'just now'
   const minutes = Math.floor(seconds / 60)
   if (minutes < 60) return `${minutes}m ago`
@@ -57,9 +59,10 @@ type DateGroup = (typeof DATE_GROUP_ORDER)[number]
 
 const SIDEBAR_GROUP_STATE_KEY = 'navi.sidebar.groupState'
 
-function getDateGroup(timestamp: number): DateGroup {
-  const now = new Date()
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+function getDateGroup(timestamp: number, now: number | null): DateGroup {
+  if (now == null) return 'Today'
+  const nowDate = new Date(now)
+  const today = new Date(nowDate.getFullYear(), nowDate.getMonth(), nowDate.getDate())
   const ms = today.getTime()
   if (timestamp >= ms) return 'Today'
   if (timestamp >= ms - 86_400_000) return 'Yesterday'
@@ -69,11 +72,12 @@ function getDateGroup(timestamp: number): DateGroup {
 }
 
 function groupByDate(
-  conversations: Conversation[]
+  conversations: Conversation[],
+  now: number | null
 ): Array<{ label: DateGroup; items: Conversation[] }> {
   const map = new Map<DateGroup, Conversation[]>()
   for (const c of conversations) {
-    const group = getDateGroup(c.updatedAt)
+    const group = getDateGroup(c.updatedAt, now)
     const arr = map.get(group)
     if (arr) arr.push(c)
     else map.set(group, [c])
@@ -145,6 +149,7 @@ export function Sidebar({
 }: SidebarProps) {
   const [search, setSearch] = useState('')
   const [recentOnly, setRecentOnly] = useState(true)
+  const [now, setNow] = useState<number | null>(null)
   const [pendingDeleteIds, setPendingDeleteIds] = useState<Set<string>>(
     () => new Set()
   )
@@ -167,6 +172,12 @@ export function Sidebar({
     if (stored !== null) setRecentOnly(stored === 'true')
   }, [])
 
+  useEffect(() => {
+    setNow(Date.now())
+    const interval = setInterval(() => setNow(Date.now()), 60_000)
+    return () => clearInterval(interval)
+  }, [])
+
   // Persist recentOnly preference
   const toggleRecentOnly = useCallback(() => {
     setRecentOnly((prev) => {
@@ -187,19 +198,19 @@ export function Sidebar({
     }
     // When recentOnly is active and not searching, only show recently active conversations
     if (recentOnly && !search.trim()) {
-      items = items.filter((c) => isRecentlyActive(c.updatedAt))
+      items = items.filter((c) => isRecentlyActive(c.updatedAt, now))
     }
     return items
-  }, [conversations, pendingDeleteIds, search, recentOnly])
+  }, [conversations, pendingDeleteIds, search, recentOnly, now])
 
   // Count of hidden older conversations (for the toggle button)
   const olderCount = useMemo(() => {
     if (!recentOnly || search.trim()) return 0
     const nonDeleted = conversations.filter((c) => !pendingDeleteIds.has(c.id))
-    return nonDeleted.length - nonDeleted.filter((c) => isRecentlyActive(c.updatedAt)).length
-  }, [conversations, pendingDeleteIds, recentOnly, search])
+    return nonDeleted.length - nonDeleted.filter((c) => isRecentlyActive(c.updatedAt, now)).length
+  }, [conversations, pendingDeleteIds, recentOnly, search, now])
 
-  const groups = useMemo(() => groupByDate(filtered), [filtered])
+  const groups = useMemo(() => groupByDate(filtered, now), [filtered, now])
 
   const flatList = useMemo(
     () => groups.flatMap((g) => g.items),
@@ -444,6 +455,7 @@ export function Sidebar({
                               }}
                               onCancelRename={() => setEditingId(null)}
                               onAgentSelect={onAgentSelect}
+                              now={now}
                             />
                           </li>
                         )
@@ -537,6 +549,7 @@ function ConversationItem({
   isEditing,
   liveAgentSessions,
   liveProcessAgentIds,
+  now,
   onSelect,
   onDelete,
   onStartRename,
@@ -550,6 +563,7 @@ function ConversationItem({
   isEditing: boolean
   liveAgentSessions: Set<string>
   liveProcessAgentIds: string[]
+  now: number | null
   onSelect: () => void
   onDelete: () => void
   onStartRename: () => void
@@ -610,8 +624,8 @@ function ConversationItem({
     }
   }
 
-  const timeLabel = timeAgo(conversation.updatedAt)
-  const recentlyActive = isRecentlyActive(conversation.updatedAt)
+  const timeLabel = timeAgo(conversation.updatedAt, now)
+  const recentlyActive = isRecentlyActive(conversation.updatedAt, now)
   const hasSessionMatch = !!conversation.sessionKey && liveAgentSessions.has(conversation.sessionKey)
   const processFallbackId = liveProcessAgentIds[0]
   const botTargetId = hasSessionMatch ? conversation.sessionKey : processFallbackId

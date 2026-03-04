@@ -79,6 +79,12 @@ type InboundMessage = {
 type ReasoningChunk = { type: 'reasoning-delta'; reasoning?: string; text?: string }
 type ToolCallChunk = { type: 'tool-call'; toolName?: string; name?: string }
 type ToolInputStartChunk = { type: 'tool-input-start'; toolName?: string; name?: string }
+type ToolOutputChunk = {
+  type: 'tool-result'
+  toolCallId?: string
+  toolName?: string
+  output?: unknown
+}
 
 type SessionLogEntry =
   | {
@@ -276,6 +282,20 @@ export async function POST(req: Request) {
           payload: {
             conversation_id: conversationId,
             text: `Using ${toolName}...`,
+          },
+        })
+        return
+      }
+
+      if (chunk.type === 'tool-result') {
+        const toolChunk = chunk as ToolOutputChunk
+        const toolName = toolChunk.toolName
+        if (!toolName) return
+        broadcast({
+          type: 'thinking_update',
+          payload: {
+            conversation_id: conversationId,
+            text: `Tool ${toolName} completed.`,
           },
         })
         return
