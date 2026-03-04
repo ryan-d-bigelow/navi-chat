@@ -49,6 +49,17 @@ function normalizeLabel(label: string): string {
     .trim()
 }
 
+function looksLikeExplanatoryText(label: string): boolean {
+  // Lines with "=" or "—" followed by explanation are definitions, not options
+  if (/\s+=\s+/.test(label) || /\s+—\s+/.test(label)) return true
+  // Lines with parenthetical explanations longer than 20 chars
+  const parenMatch = label.match(/\(([^)]+)\)/)
+  if (parenMatch && parenMatch[1].length > 20) return true
+  // Lines that are too long are usually explanatory
+  if (label.length > 80) return true
+  return false
+}
+
 function extractNumberedOptions(text: string): ActionOption[] | null {
   const lines = text.trim().split(/\r?\n/)
   let current: ActionOption[] = []
@@ -70,6 +81,12 @@ function extractNumberedOptions(text: string): ActionOption[] | null {
     const match = line.match(NUMBERED_OPTION_RE)
     if (match) {
       const label = normalizeLabel(match[1])
+      // Skip explanatory/definition lines
+      if (looksLikeExplanatoryText(label)) {
+        const found = flushIfValid()
+        if (found) return found
+        continue
+      }
       if (label.length > 0 && label.length <= 120) {
         current.unshift({ label, value: label })
       }
